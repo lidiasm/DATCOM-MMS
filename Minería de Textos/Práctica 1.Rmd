@@ -1,0 +1,37 @@
+---
+output: pdf_document
+---
+
+\centering
+
+![Logo UGR](imgs/logo_ugr.jpg)
+\textsc{\\[1cm] \LARGE MINERÍA DE MEDIOS SOCIALES\\[1cm]}
+\textsc{\Large MÁSTER EN CIENCIA DE DATOS E INGENIERÍA DE COMPUTADORES\\[1cm]}
+\textsc{\Large\bfseries Práctica 1 Bloque II - Minería de Texto \\}
+\noindent\rule[-1ex]{\textwidth}{3pt}
+\textsc{\Large\bfseries Curso 2021-2022 \\}
+
+\textsc{\\[1cm] \large\bfseries Autora: Lidia Sánchez Mérida \\[1cm]}
+![Logo ETSIIT](imgs/etsiit_logo.png)
+\textsc{\\[1cm] \large Escuela Técnica Superior de Ingenierías Informática y de Telecomunicación}\\
+\textsc{\\[1cm] \large Granada, Mayo de 2022}
+
+\pagebreak
+
+\raggedright
+
+# Descripción del conjunto de datos
+
+El dataset seleccionado para realizar este trabajo práctico es conocido como [**IMDB dataset**](https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews?select=IMDB+Dataset.csv). Se trata de un conjunto de datos enfocado a resolver un problema de **clasificación binaria para la detección de sentimientos** basada en textos. En particular, contiene un total de cincuenta mil opiniones sobre diversas películas junto con su correspondiente etiqueta representando el sentimiento que transmiten, cuyos rango de valores es positivo o negativo.
+
+```{r}
+# Cargamos el conjunto de datos desde el fichero CSV
+df <- read.csv("IMDB Dataset.csv")
+# Número de filas y columnas
+dim(df)
+```
+
+
+
+
+
