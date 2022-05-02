@@ -1,0 +1,130 @@
+---
+output: pdf_document
+---
+
+\centering
+
+![Logo UGR](imgs/logo_ugr.jpg)
+\textsc{\\[1cm] \LARGE MINERÍA DE MEDIOS SOCIALES\\[1cm]}
+\textsc{\Large MÁSTER EN CIENCIA DE DATOS E INGENIERÍA DE COMPUTADORES\\[1cm]}
+\textsc{\Large\bfseries Práctica 1 Bloque II - Minería de Texto \\}
+\noindent\rule[-1ex]{\textwidth}{3pt}
+\textsc{\Large\bfseries Curso 2021-2022 \\}
+
+\textsc{\\[1cm] \large\bfseries Autora: Lidia Sánchez Mérida \\[1cm]}
+![Logo ETSIIT](imgs/etsiit_logo.png)
+\textsc{\\[1cm] \large Escuela Técnica Superior de Ingenierías Informática y de Telecomunicación}\\
+\textsc{\\[1cm] \large Granada, Mayo de 2022}
+
+\pagebreak
+
+\raggedright
+
+# Descripción del conjunto de datos
+
+El dataset seleccionado para realizar este trabajo práctico es conocido como [**IMDB dataset**](https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews?select=IMDB+Dataset.csv). Se trata de un conjunto de datos enfocado a resolver un problema de **clasificación binaria para la detección de sentimientos** basada en textos. En particular, contiene un total de cincuenta mil opiniones escritas en inglés sobre diversas películas, junto con su correspondiente etiqueta representando el sentimiento que transmiten con un rango de valores entre positivo o negativo. Como podemos observar en los siguientes resultados, el conjunto se encuentra **balanceado** puesto que dispone del mismo número de muestras para cada categoría.
+
+```{r}
+# Carga el conjunto de datos desde el fichero CSV
+df <- read.csv("IMDB Dataset.csv")
+# Número de filas y columnas
+dim(df)
+# Número de muestras pertenecientes a cada clase
+summary(df$sentiment)
+```
+
+# Preprocesamiento de textos
+
+En esta segunda sección se establece como objetivo el **tratamiento y limpieza de las opiniones** almacenadas en la primera columna del dataset. Posteriormente, la información preprocesada podrá ser empleada tanto en técnicas de visualización como en algoritmos de agrupamiento. 
+
+```{r message=FALSE, warning=FALSE}
+# Carga la librería para trabajar con corpus de textos
+library(tm)
+# Carga la librería con la que preprocesar textos
+library(stringr)
+# Carga la librería que permite aplicar lematización
+library(textstem)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+## Generar un corpus 
+
+El primer paso que se pretende realizar en este trabajo consiste en generar un *corpus* que represente el conjunto de textos de este dataset en una **estructura de documentos** que permita analizar y transformar su contenido. Para ello hacemos uso de la librería `tm` que dispone de dos funciones principales, la primera de ellas es `VectorSource` que convierte la columna que almacena las opiniones de los usuarios en un tipo de vector con el que generar el *corpus* mediante una segunda función conocida como `Corpus`.
+
+```{r}
+# Convierte la columna de opiniones a un vector fuente para generar un corpus
+text_corpus <- Corpus(VectorSource(df$review))
+text_corpus
+```
+
+## Eliminar caracteres no alfanuméricos
+
+Tras construir un esquema organizado de documentos con todas las opiniones disponibles, a continuación procedemos a eliminar todos aquellos **caracteres especiales, numéricos y signos de puntuación**. Una razón explicativa de esta etapa reside en el insignificante conocimiento útil que aportan este tipo de caracteres en la resolución de problemas de clasificación y *clustering*. Para aplicar este preprocesamiento se ha empleado la función `tm_map`, disponible en la librería mencionada anteriormente, de dos formas distintas:
+
+* El uso por defecto conlleva establecer el tipo de caracteres que se desean eliminar del conjunto de documentos. En este trabajo se han utilizado `removePunctuation` con el que eliminar los signos de puntuación y `removeNumbers` para suprimir los dígitos.
+
+* Adicionalmente este método permite diseñar funciones donde se representan patrones de caracteres que se desean anular de los elementos que componen el *corpus*. Para ello la misma biblioteca proporciona la función `content_transformer`, que en combinación con `gsub`, permiten reemplazar todos aquellos caracteres que no se encuentren dentro del patrón alfanumérico especificado por espacios en blanco.
+
+```{r warning=FALSE}
+# Elimina signos de puntuación
+clean_text_corpus <- tm_map(text_corpus, removePunctuation)
+# Elimina caracteres no alfanuméricos
+remove_non_alnum <- content_transformer(function(x) gsub("[^[:alnum:] ]", "", x))
+clean_text_corpus <- tm_map(clean_text_corpus, remove_non_alnum)
+# Elimina dígitos
+clean_text_corpus <- tm_map(clean_text_corpus, removeNumbers)
+# Mostramos las diferencias entre algunos caracteres del primer documento 
+# original y su homólogo preprocesado
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+## Normalización y stopwords
+
+En este tercer apartado procedemos a normalizar los caracteres del conjunto de textos convirtiéndolos a **minúsculas** para a continuación eliminar aquellos términos considerados como **palabras vacías**. Con este preprocesamiento se pretende suprimir palabras que no aportan información útil al análisis del contenido del dataset. Algunos ejemplos representativos de esta clase de términos son las preposiciones, artículos, conjunciones, determinantes, pronombres, entre otros. Para aplicar sendas técnicas, utilizamos la función función `tm_map`, que en combinación con `tolower` y `stopwords` permite normalizar los caracteres transformándolos a minúsculas y borrar las palabras vacías existentes en inglés, que es el idioma en el que se encuentran las opiniones. Tras visualizar los textos resultantes, se ha insertado un tercer método consistente en suprimir los **espacios en blanco adicionales** procedentes del preprocesamiento anterior haciendo uso, de nuevo, de la misma función aunque con el argumento `stripWhitespace`
+
+```{r warning=FALSE}
+# Convierte todos los caracteres a minúsculas
+clean_text_corpus <- tm_map(clean_text_corpus, content_transformer(tolower))
+# Elimina stopwords en inglés
+clean_text_corpus <- tm_map(clean_text_corpus, 
+                      content_transformer(removeWords), stopwords("english"))
+# Elimina espacios extra
+clean_text_corpus <- tm_map(clean_text_corpus, stripWhitespace)
+# Mostramos las diferencias entre algunos caracteres del primer documento 
+# original y su homólogo preprocesado
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+# Lematización
+
+La lematización es una técnica de preprocesamiento cuyo objetivo consiste en realizar un análisis morfológico de la sentencia para **reemplazar cada palabra por su término base**. Existen dos principales diferencias que particularizan esta técnica frente a un método similar conocido como *stemming*. Por un lado, la nueva expresión es totalmente legible puesto que contiene todos sus caracteres, mientras que para seleccionar el sustituto también se considera el significado del texto. Con el fin de aplicar este método se hace referencia a la biblioteca `textstem` que almacena la función `lemmatize_strings` con la que transformar cada término en su raíz. Para emplear este método sobre un *corpus* de documentos podemos seguir utilizando la misma función `tm_map`. Tal y como podemos observar en los resultados, cada sustantivo se encuentra en singular, mientras que cada verbo se redacta en su forma simple.
+
+```{r warning=FALSE}
+# Lematización
+clean_text_corpus <- tm_map(clean_text_corpus, lemmatize_strings)
+# Mostramos las diferencias entre algunos caracteres del primer documento 
+# original y su homólogo preprocesado
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+# Nube de palabras
+
+```{r}
+dtm <- TermDocumentMatrix(clean_text_corpus[1:10])
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+set.seed(1234)
+wordcloud(words = d$word, freq = d$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+# Agrupamiento de textos
+
+
+
