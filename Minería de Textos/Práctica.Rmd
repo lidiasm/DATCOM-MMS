@@ -22,7 +22,7 @@ output: pdf_document
 
 # Descripción del conjunto de datos
 
-El dataset seleccionado para realizar este trabajo práctico es conocido como [**IMDB dataset**](https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews?select=IMDB+Dataset.csv). Se trata de un conjunto de datos enfocado a resolver un problema de **clasificación binaria para la detección de sentimientos** basada en textos. En particular, contiene un total de cincuenta mil opiniones escritas en inglés sobre diversas películas, junto con su correspondiente etiqueta representando el sentimiento que transmiten con un rango de valores entre positivo o negativo. Como podemos observar en los siguientes resultados, el conjunto se encuentra **balanceado** puesto que dispone del mismo número de muestras para cada categoría.
+El dataset seleccionado para realizar este trabajo práctico es conocido como [**IMDB dataset**](https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews?select=IMDB+Dataset.csv). Se trata de un conjunto de datos enfocado a resolver un problema de **clasificación binaria para la detección de sentimientos** basada en textos. En particular, contiene un total de cincuenta trescientosopiniones escritas en inglés sobre diversas películas, junto con su correspondiente etiqueta representando el sentimiento que transmiten con un rango de valores entre positivo o negativo. Como podemos observar en los siguientes resultados, el conjunto se encuentra **balanceado** puesto que dispone del mismo número de muestras para cada categoría.
 
 ```{r}
 # Carga el conjunto de datos desde el fichero CSV
@@ -44,7 +44,9 @@ library(tm)
 library(stringr)
 # Carga la librería que permite aplicar lematización
 library(textstem)
+# Carga la librería que permite representar una nube de palabras
 library(wordcloud)
+# Carga la librería que permite personalizar la apariencia de una nube de palabras
 library(RColorBrewer)
 ```
 
@@ -98,7 +100,7 @@ substr(text_corpus[[1]]$content, 1, 70)
 substr(clean_text_corpus[[1]]$content, 1, 70)
 ```
 
-# Lematización
+## Lematización
 
 La lematización es una técnica de preprocesamiento cuyo objetivo consiste en realizar un análisis morfológico de la sentencia para **reemplazar cada palabra por su término base**. Existen dos principales diferencias que particularizan esta técnica frente a un método similar conocido como *stemming*. Por un lado, la nueva expresión es totalmente legible puesto que contiene todos sus caracteres, mientras que para seleccionar el sustituto también se considera el significado del texto. Con el fin de aplicar este método se hace referencia a la biblioteca `textstem` que almacena la función `lemmatize_strings` con la que transformar cada término en su raíz. Para emplear este método sobre un *corpus* de documentos podemos seguir utilizando la misma función `tm_map`. Tal y como podemos observar en los resultados, cada sustantivo se encuentra en singular, mientras que cada verbo se redacta en su forma simple.
 
@@ -113,18 +115,36 @@ substr(clean_text_corpus[[1]]$content, 1, 70)
 
 # Nube de palabras
 
-```{r}
-dtm <- TermDocumentMatrix(clean_text_corpus[1:10])
-m <- as.matrix(dtm)
-v <- sort(rowSums(m),decreasing=TRUE)
-d <- data.frame(word = names(v),freq=v)
-set.seed(1234)
-wordcloud(words = d$word, freq = d$freq, min.freq = 1,
-          max.words=200, random.order=FALSE, rot.per=0.35, 
+Una de las visualizaciones más popularmente utilizadas para Minería de Textos se conoce como **nube de palabras**. Su principal objetivo consiste en representar los términos de mayor relevancia en función del **número de apariciones** en los diferentes textos. Por lo tanto, en primer lugar se obtiene el número de ocurrencias de cada término utilizando la función `TermDocumentMatrix` implementada en la librería `tm`. No obstante, debido al altísimo volumen de opiniones almacenadas en el dataset, no es posible realizar este cómputo sobre el *corpus* completo por lo que se considera únicamente un subconjunto de trescientoselementos. A continuación se genera una matriz de frecuencias sumando los valores resultantes de la etapa anterior y se organiza en orden decreciente con el fin de priorizar los términos más populares. Finalmente hacemos referencia a la librería `wordcloud` que contiene una función de una nomenclatura similar con la que representar las palabras más relevantes de los primeros trescientosdocumentos seleccionados.
+
+```{r message=FALSE, warning=FALSE}
+# Calcula el número de aparciciones de cada término para trescientosdocumentos
+freq_matrix <- as.matrix(TermDocumentMatrix(clean_text_corpus[1:300]))
+# Suma las ocurrencias obtenidas para calcular la frecuencia total de cada
+# palabra y ordena la matriz resultante de mayor a menor
+sorted_freq_matrix <- sort(rowSums(freq_matrix), decreasing=TRUE)
+# Genera un dataframe para luego representarlo en una nuble de términos
+df_freq_matrix <- data.frame(word=names(sorted_freq_matrix), 
+                             freq=sorted_freq_matrix)
+# Representa una nube de palabras estableciendo el tamaño como la 
+# frecuencia, con un mínimo de una aparición en un documento y un máximo
+# número de doscientas palabras
+wordcloud(words=df_freq_matrix$word, freq=df_freq_matrix$freq, 
+          min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, 
           colors=brewer.pal(8, "Dark2"))
 ```
 
+Tal y como podemos apreciar en el gráfico anterior, los términos de mayor tamaño son los que disponen de una mayor relevancia puesto que se caracterizan por un número de ocurrencias superior al resto. Si los observamos podemos comprobar que se trata de **sustantivos y verbos relacionados con la temática** del conjunto de datos, como por ejemplo *movie*, *film*, *see*. Adicionalmente, existen algunos conceptos ligeramente menos relevantes que expresan las emociones vinculadas a las opiniones redactadas por los usuarios: los **adjetivos**. Parece ser que los **más frecuentes tienen una connotación positiva** por lo que, a pesar de que el dataset se encuentra balanceado en el número de ejemplos de sendas clases, la tendencia de los participantes se ha inclinado por el uso de más términos positivos. Finalmente, un aspecto a destacar reside en la aparición de una minoría de **dígitos expresados como texto** que no han sido detectados por las técnicas de preprocesamiento. Una de las librerías que se pueden emplear para transformar las cifras manuscritas en valores numéricos es `wordstonumbers`, sin embargo no se encuentra disponible para una versión de R igual o superior a la 3.6.3, por lo que ha sido imposible su aplicación.
+
 # Agrupamiento de textos
 
+```{r}
+dist.matrix = proxy::dist(as.matrix(freq_matrix), method = "cosine")
+clustering.hierarchical <- hclust(dist.matrix, method = "ward.D2") 
+plot(clustering.hierarchical, hang = -1)
+rect.hclust(clustering.hierarchical, k = 6, border = "red")
+```
 
+
+# Clasificación de sentimientos
 
