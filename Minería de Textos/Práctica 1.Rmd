@@ -1,0 +1,189 @@
+---
+output: pdf_document
+---
+
+\centering
+
+![Logo UGR](imgs/logo_ugr.jpg)
+\textsc{\\[1cm] \LARGE MINERÍA DE MEDIOS SOCIALES\\[1cm]}
+\textsc{\Large MÁSTER EN CIENCIA DE DATOS E INGENIERÍA DE COMPUTADORES\\[1cm]}
+\textsc{\Large\bfseries Práctica 1 Bloque II - Minería de Texto \\}
+\noindent\rule[-1ex]{\textwidth}{3pt}
+\textsc{\Large\bfseries Curso 2021-2022 \\}
+
+\textsc{\\[1cm] \large\bfseries Autora: Lidia Sánchez Mérida \\[1cm]}
+![Logo ETSIIT](imgs/etsiit_logo.png)
+\textsc{\\[1cm] \large Escuela Técnica Superior de Ingenierías Informática y de Telecomunicación}\\
+\textsc{\\[1cm] \large Granada, Mayo de 2022}
+
+\pagebreak
+
+\raggedright
+
+# Descripción del conjunto de datos
+
+El dataset seleccionado para realizar este trabajo práctico se denomina [**IMDB dataset**](https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews?select=IMDB+Dataset.csv). Se trata de un conjunto de datos orientado a resolver un problema de **clasificación binaria para la detección de sentimientos** basada en textos. En particular, contiene un total de cincuenta mil opiniones en inglés sobre diversas películas, junto con su correspondiente etiqueta representando el sentimiento que transmiten, pudiendo ser positivo o negativo. Como podemos observar en los siguientes resultados, el conjunto se encuentra **balanceado** puesto que dispone del mismo número de muestras para cada categoría.
+
+```{r}
+# Carga el conjunto de datos desde el fichero CSV
+df <- read.csv("IMDB Dataset.csv")
+# Número de filas y columnas
+dim(df)
+# Número de muestras pertenecientes a cada clase
+summary(df$sentiment)
+```
+
+# Preprocesamiento de textos
+
+En esta segunda sección se establece como objetivo el **tratamiento y limpieza de las opiniones** almacenadas en la primera columna del dataset. Posteriormente, la información preprocesada podrá ser empleada tanto en técnicas de visualización como en algoritmos de agrupamiento. 
+
+```{r message=FALSE, warning=FALSE}
+# Carga la librería para trabajar con corpus de textos
+library(tm)
+# Carga la librería con la que preprocesar textos
+library(stringr)
+# Carga la librería que permite aplicar lematización
+library(textstem)
+# Carga la librería que permite representar una nube de palabras
+library(wordcloud)
+# Carga la librería que permite personalizar una nube de palabras
+library(RColorBrewer)
+# Carga la librería que permite calcular la similitud del coseno
+library(proxy)
+# Carga la librería que permite visualizar clusteres
+library(factoextra)
+```
+
+## Generar un corpus 
+
+El primer paso que se pretende realizar en este trabajo consiste en generar un *corpus* que represente el conjunto de textos disponible en una **estructura de documentos** que permita analizar y transformar su contenido. Para ello hacemos uso de la librería `tm` que contiene dos funciones principales, la primera de ellas es `VectorSource` que convierte la columna con las opiniones de los usuarios en un tipo particular de vector con el que generar el *corpus* mediante una segunda función conocida como `Corpus`.
+
+```{r}
+# Convierte la columna de opiniones a un vector fuente para generar un corpus
+text_corpus <- Corpus(VectorSource(df$review))
+text_corpus
+```
+
+## Eliminar caracteres no alfanuméricos
+
+Tras construir un esquema organizado de documentos, a continuación procedemos a eliminar todos aquellos **caracteres especiales, numéricos y signos de puntuación**. Una razón explicativa de esta etapa reside en el insignificante conocimiento útil que aportan este tipo de caracteres en la resolución de problemas de clasificación y *clustering*. Para aplicar este preprocesamiento se ha empleado la función `tm_map`, disponible en la librería mencionada anteriormente, de dos formas distintas:
+
+* El uso por defecto conlleva establecer el tipo de caracteres que se desean eliminar del conjunto de documentos. En este trabajo se han utilizado `removePunctuation` con el que eliminar los signos de puntuación y `removeNumbers` para suprimir los dígitos.
+
+* Adicionalmente este método permite diseñar funciones donde se representan patrones de caracteres que se desean anular de los elementos que componen el *corpus*. Para ello la misma biblioteca proporciona la función `content_transformer`, que en combinación con `gsub`, permiten eliminar todos aquellos caracteres que no se encuentran dentro del patrón alfanumérico especificado.
+
+```{r warning=FALSE}
+# Elimina signos de puntuación
+clean_text_corpus <- tm_map(text_corpus, removePunctuation)
+# Elimina caracteres no alfanuméricos
+remove_non_alnum <- content_transformer(function(x) gsub("[^[:alnum:] ]", "", x))
+clean_text_corpus <- tm_map(clean_text_corpus, remove_non_alnum)
+# Elimina dígitos
+clean_text_corpus <- tm_map(clean_text_corpus, removeNumbers)
+# Mostramos las diferencias entre algunos caracteres del primer documento 
+# original y su homólogo preprocesado
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+## Normalización y stopwords
+
+En este tercer apartado procedemos a normalizar los caracteres del conjunto de textos convirtiéndolos a **minúsculas**, con el objetivo de identificar y eliminar **palabras vacías**. Con este preprocesamiento se pretende suprimir términos que no aportan información útil al análisis del contenido del dataset. Algunos ejemplos representativos de este tipo de conceptos son las preposiciones, artículos, conjunciones, determinantes, pronombres, entre otros. Para aplicar respectivas técnicas se ha ideado una combinación entre las funciones `tolower` y `stopwords` en conjunción con `tm_map` que es la encargada de llevar a cabo los preprocesamientos asociados. Tras visualizar los textos resultantes, se ha insertado un tercer método consistente en suprimir los **espacios en blanco adicionales** generados como consecuencia de las técnicas anteriores haciendo uso, de nuevo, de la misma función aunque con el argumento `stripWhitespace`.
+
+```{r warning=FALSE}
+# Convierte todos los caracteres a minúsculas
+clean_text_corpus <- tm_map(clean_text_corpus, content_transformer(tolower))
+# Elimina stopwords en inglés
+clean_text_corpus <- tm_map(clean_text_corpus, 
+                      content_transformer(removeWords), stopwords("english"))
+# Elimina espacios extra
+clean_text_corpus <- tm_map(clean_text_corpus, stripWhitespace)
+# Mostramos las diferencias entre algunos caracteres del primer documento 
+# original y su homólogo preprocesado
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+## Lematización
+
+La lematización es una técnica de preprocesamiento que desarrolla un análisis morfológico de la sentencia para **reemplazar cada palabra por su término base**. Existen dos principales diferencias que particularizan esta técnica frente a un método similar conocido como **stemming**. Por un lado, la nueva expresión es totalmente legible puesto que contiene todos sus caracteres, mientras que la selección del término sustituto se fundamenta en su respectivo significado en el texto. Con el fin de aplicar este método se hace referencia a la biblioteca `textstem` que almacena la función `lemmatize_strings` con la que transformar cada término en su raíz. Al disponer de un *corpus* como estructura de documentos, podemos continuar utilizando la función `tm_map` para aplicar esta técnica de preprocesamiento.Tal y como podemos observar en los resultados, cada sustantivo se encuentra en singular y cada verbo se expresa en su forma simple.
+
+```{r warning=FALSE}
+# Lematización
+clean_text_corpus <- tm_map(clean_text_corpus, lemmatize_strings)
+# Mostramos las diferencias entre algunos caracteres del primer documento 
+# original y su homólogo preprocesado
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+# Nube de palabras
+
+Una de las visualizaciones más popularmente utilizadas para Minería de Textos se conoce como **nube de palabras**. Su principal objetivo consiste en representar los términos de mayor relevancia en función del **número de apariciones** en los diferentes textos. Por lo tanto, en primer lugar se obtiene el número de ocurrencias de cada término utilizando la función `TermDocumentMatrix` implementada en la librería `tm`. No obstante, debido al altísimo volumen de opiniones almacenadas en el dataset, no es posible realizar este cómputo sobre el *corpus* completo, por lo que se considera únicamente un **subconjunto de los trescientos primeros elementos**. A continuación se genera una **matriz de frecuencias** sumando los valores resultantes de la etapa anterior y se organiza en orden decreciente con el fin de priorizar los términos más repetidos. Finalmente hacemos uso de la librería `wordcloud` que contiene una función de una nomenclatura similar con la que representar las palabras más relevantes del subconjunto de documentos seleccionados.
+
+```{r message=FALSE, warning=FALSE}
+# Calcula el número de aparciciones de cada término para trescientosdocumentos
+freq_matrix <- as.matrix(TermDocumentMatrix(clean_text_corpus[1:300]))
+# Suma las ocurrencias obtenidas para calcular la frecuencia total de cada
+# palabra y ordena la matriz resultante de mayor a menor
+sorted_freq_matrix <- sort(rowSums(freq_matrix), decreasing=TRUE)
+# Genera un dataframe para luego representarlo en una nuble de términos
+df_freq_matrix <- data.frame(word=names(sorted_freq_matrix), 
+                             freq=sorted_freq_matrix)
+# Representa una nube de palabras estableciendo el tamaño como la 
+# frecuencia, con un mínimo de una aparición en un documento y un máximo
+# número de doscientas palabras
+wordcloud(words=df_freq_matrix$word, freq=df_freq_matrix$freq, 
+          min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+Tal y como podemos apreciar en el gráfico anterior, los términos de mayor tamaño son los que disponen de una mayor importancia puesto que se caracterizan por un número de ocurrencias superior al resto. Si los observamos podemos comprobar que se trata de **sustantivos y verbos relacionados con la temática** del conjunto de datos, como por ejemplo *movie*, *film*, *see*. Adicionalmente, existen algunos conceptos ligeramente menos relevantes que expresan las emociones vinculadas a las opiniones redactadas por los usuarios: los **adjetivos**. Parece ser que los **más frecuentes tienen una connotación positiva** por lo que, a pesar de que las clases del dataset se encuentran balanceadas, la tendencia de los participantes se inclina por un mayor uso de términos positivos. Finalmente, un aspecto a destacar reside en la aparición de una minoría de **dígitos expresados como texto** que no han sido detectados por las técnicas de preprocesamiento. Una de las librerías que se pueden emplear para transformar las cifras manuscritas en valores numéricos es `wordstonumbers`, sin embargo no se encuentra disponible para una versión de R igual o superior a la 3.6.3, por lo que ha sido imposible su aplicación.
+
+# Agrupamiento de textos
+
+Una vez disponemos del conjunto de textos preprocesados y de diversos análisis explicativos de su contenido, a continuación se pretende **agrupar documentos** dependiendo de su similitud. Su estimación se encuentra basada en el **cálculo de distancias**, por lo que el primer requisito para su aplicación consiste en crear una representación numérica de los textos. La métrica **TF-IDF** consiste en determinar la relevancia de cada documento en función del conocimiento útil que aportan sus términos. Para ello la librería `tm` dispone de dos funciones principales, `DocumentTermMatrix` y `weightTfIdf`, con las que organizar el *corpus* en una matriz de documentos y aplicar la formulación correspondiente a esta metodología. Tal y como ocurría en la sección anterior, el volumen de datos es de tal magnitud que resulta imposible emplear estas técnicas sobre el conjunto de información completo, por lo que de nuevo se consideran únicamente los **trescientos primeros textos**.
+
+```{r}
+# Genera una matriz de documentos a partir del corpus preprocesado
+doc_matrix <- DocumentTermMatrix(clean_text_corpus[1:300]) 
+# Calcula el TFIDF de la matriz de documentos
+tfidf_matrix <- weightTfIdf(doc_matrix)
+# Muestra un resumen del resultado
+inspect(tfidf_matrix)
+```
+
+Si observamos los resultados obtenidos, destaca el **notable valor de la métrica Sparsity**, que refleja el porcentaje de ceros almacenados en la matriz. La explicación de este fenómeno se fundamenta en la cantidad de términos caracterizados por una **mínima frecuencia** de aparición en los documentos. Como consecuencia, presumiblemente este tipo de conceptos no serán suficientemente relevantes para ser incluidos en este estudio. Por lo tanto, podemos emplear la función `removeSparseTerms` que permite eliminar aquellas palabras cuyo valor de **Sparsity es mayor a un determinado umbral**, de modo que únicamente se consideran los términos con una frecuencia de ocurrencia razonablemente importante. Tras realizar varios experimentos estableciendo diferentes umbrales de Sparsity, conforme más elevado es el valor más restrictivo es el filtrado, lo que conlleva una disminución drástica del número de conceptos. Estableciendo un umbral del 50% podemos apreciar que el conjunto de palabras analizadas por documento se reduce a únicamente **seis términos**, que se pueden visualizar en la matriz resultante. Sin embargo, con este umbral se consigue **suprimir más de la mitad de ceros** produciendo un decremento altamente notable en el valor de Sparsity.
+
+```{r}
+# Elimina aquellos términos con un valor de sparsity superior al 50%
+reduced_tfidf_matrix <- removeSparseTerms(tfidf_matrix, .5)
+# Muestra un resumen del resultado
+inspect(reduced_tfidf_matrix)
+```
+
+A continuación procedemos a calcular la **matriz de distancias** entre los trescientos documentos seleccionados utilizando la representación numérica basada en la métrica TF-IDF. Para determinar el grado de semejanza entre dos textos se pueden aplicar diversas métricas de cálculo de distancias. Sin embargo, la **distancia del coseno** es la fórmula más ampliamente utilizada en la literatura por su capacidad de **análisis del contenido** con la que determinar la similitud entre documentos, en lugar de considerar propiedades irrelevantes para esta temática, como el tamaño en el caso de la distancia Euclídea. Mediante la biblioteca `proxy` podemos aplicar la función `dist` con la que aplicar esta formulación y obtener cuán parecidos son los textos entre sí. 
+
+El siguiente paso consiste en agrupar los trescientos textos elegidos en función de los niveles de analogía resultantes. Existen varios algoritmos de *clustering* de distinta naturaleza dependiendo de los pilares fundamentales en los que se basa su implementación. Uno de los métodos más comunes es el **Agglomerative Hierarchical Clustering** cuyo núcleo reside en la matriz de distancias proporcionada para agrupar los ejemplos de un conjunto de datos. Estableciendo la medida **complete linkage**, se favorece la creación de grupos más compactos al considerar que la distancia entre clusteres es igual a la distancia entre los miembros más lejanos de cada grupo. Para utilizar este algoritmo disponemos de la función `hclust` que contiene un primer parámetro asociado a la matriz de distancias calculada a partir de la similitud del coseno, además de un segundo argumento con el que establecer la fórmula con la que determinar la distancia entre clusteres.
+
+```{r}
+# Calcula la matriz de distancias entre documentos
+dist_matrix <- proxy::dist(as.matrix(reduced_tfidf_matrix), method="cosine")
+# Clustering jerárquico
+hierarchical_clustering <- hclust(dist_matrix, method="complete")
+# Selección de clusteres
+clusters <- cutree(hierarchical_clustering, k=2)
+# Representa los clusteres seleccionados
+fviz_cluster(list(data=reduced_tfidf_matrix, cluster=clusters)) 
+```
+
+Como el dendrograma resultante contiene un importante número de componentes no ha sido viable realizar un análisis gráfico. No obstante, con la función `cutree` se puede especificar el número de agrupaciones deseadas para representarlas visualmente, tal y como podemos observar en la figura anterior. Al tratarse de un problema de clasificación binaria, parece conveniente reducir el número de clusteres a dos que representen el sentimiento positivo y su opuesto. Asumiendo una equivalencia entre el número de grupos y el orden anterior, suponemos que el **cluster 1 representa las instancias positivas** mientras que el **cluster 2 simboliza las muestras negativas**. El aspecto más destacable de este esquema se encuentra en el **volumen masivo de ejemplos etiquetados como positivos** en comparación con el número de instancias pertenecientes al cluster contrario, puesto que su población es considerablemente más amplia y dispersa. 
+
+El método más preciso de evaluación de las agrupaciones realizadas por el algoritmo únicamente se puede aplicar si disponemos de las etiquetas reales para cada una de las instancias del dataset. Como este es el caso del conjunto de datos *IMDB dataset*, a continuación calculamos la **tasa de aciertos** a partir de los clústeres asignados y los sentimientos verdaderos de los trescientos primeros documentos. Tal y como podemos apreciar en el siguiente *chunk*, el **porcentaje de precisión se encuentra alrededor de un 53%**, lo que indica que ha fallado en más de la mitad de las instancias. Como consecuencia podemos afirmar que, para este subconjunto de documentos, el algoritmo de *clustering* jerárquico empleado no es capaz de identificar correctamente los sentimientos de cada texto.
+
+```{r}
+# Tasa de aciertos del algoritmo de clustering con respecto a las 
+# etiquetas reales
+sum(clusters == as.numeric(df$sentiment[1:300]))/length(clusters)
+```
+
