@@ -95,7 +95,7 @@ library(dplyr)
 
 ## MPQA Subjectivity Lexicon
 
-Este primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría anterior de diccionarios. Previo a su uso, en primer lugar cargamos la información contenida en el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura. A continuación se generan dos listas con el conjunto de palabras contemplado en el diccionario y los sentimientos asociados a cada uno de los términos. 
+Este primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** asociados que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. En la segunda etapa se itera sobre las opiniones del dataset transformándolos en **vectores de palabras**, con los que que poder realizar operaciones de **interesección** y encontrar los sentimientos de la terminología almacenada en ambas estructuras. Finalmente se asigna el **sentimiento más votado** entre las palabras comunes a sendas entidades, ignorando la etiqueta *neutral* puesto que el rango de valores relativos a la columna *Sentiment* exclusivamente consideran los sentimientos positivos o negativos. 
 
 ```{r}
 # Lee el fichero que contiene el diccionario MPQA Subjectivity Lexicon
@@ -109,21 +109,33 @@ mpqa_lex_words <- c(substr(mpqa_lex[, 3],
 mpqa_lex_sentiments <- c(substr(mpqa_lex[, 6], 
                          unlist(gregexpr('=', mpqa_lex[, 6]))+1, 
                          nchar(as.character(mpqa_lex[, 6]))))
+# Número de palabras totales en todos los documentos
+n_tot_words <- 0
+# Número de palabras coincidentes en los documentos y en el diccionario
+n_found_words <- 0
 # Vector que almacena las predicciones del sentimiento de cada documento
 preds <- c()
 # Iteramos sobre todos los documentos del corpus
 for (i in c(1:length(clean_text_corpus))) {
   # Crea un vector de palabras para cada documento
   words_array <- unlist(strsplit(clean_text_corpus[[i]]$content, " "))
+  n_tot_words <- n_tot_words + length(words_array)
   # Busca los términos comunes entre cada documento y el diccionario
   found_words <- intersect(words_array, mpqa_lex_words)
+  n_found_words <- n_found_words + length(found_words)
   # Obtiene los sentimientos de los términos encontrados en el diccionario
   found_sentiments <- unlist(sapply(c(1:length(found_words)), 
        function(x) mpqa_lex_sentiments[which(found_words[x] == mpqa_lex_words)]))
-  # Asigna la clase mayoritaria
-  preds <- append(preds, names(which.max(table(found_sentiments))))
+  # Obtiene la clase mayoritaria
+  max_class <- names(which.max(table(found_sentiments, exclude='neutral')))
+  # Adapta el sentimiento al rango de valores del dataset
+  preds <- append(preds, ifelse(max_class == 'positive', 'POS', 'NEG'))
 }
 # Resumen de predicciones
 table(preds)
+# Calcula el porcentaje de palabras encontradas en el diccionario
+n_found_words/n_tot_words
+# Calcula la precisión comparando las predicciones con las etiquetas reales
+sum(preds == df$Sentiment)/length(preds)
 ```
-
+En los resultados visualizados podemos apreciar, en primer lugar, una tabla con el número de ejemplos predichos para cada clase, siendo la **positiva la categoría predominante**. La siguiente cifra muestra el porcentaje de términos encontrados en el diccionario para la totalidad de los documentos, que al tratarse únicamente de un 23.24% podemos determinar que la **mayoría de los conceptos no han sido analizados** por su inexistencia en este recurso. Como consecuencia se ha obtenido un **68.75% de precisión** tras la comparación de las etiquetas reales y las predichas sobre el conjunto de documentos completo. Por un lado estos resultados demuestran el riesgo de utilizar este tipo de estructuras para resolver problemas de detección de sentimientos, puesto que es altamente **complicado que dispongan de todos los términos** disponibles en un idioma. Sin embargo, tras conocer que el porcentaje de conceptos identificados apenas ha superado el 23%, el hecho de haber obtenido un 69% aproximadamente de precisión tampoco parece ser un pésimo resultado.
