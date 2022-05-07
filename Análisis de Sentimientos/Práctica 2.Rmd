@@ -1,0 +1,118 @@
+---
+output: pdf_document
+---
+
+\centering
+
+![Logo UGR](imgs/logo_ugr.jpg)
+\textsc{\\[1cm] \LARGE MINERÍA DE MEDIOS SOCIALES\\[1cm]}
+\textsc{\Large MÁSTER EN CIENCIA DE DATOS E INGENIERÍA DE COMPUTADORES\\[1cm]}
+\textsc{\Large\bfseries Práctica 1 Bloque II - Minería de Texto \\}
+\noindent\rule[-1ex]{\textwidth}{3pt}
+\textsc{\Large\bfseries Curso 2021-2022 \\}
+
+\textsc{\\[1cm] \large\bfseries Autora: Lidia Sánchez Mérida \\[1cm]}
+![Logo ETSIIT](imgs/etsiit_logo.png)
+\textsc{\\[1cm] \large Escuela Técnica Superior de Ingenierías Informática y de Telecomunicación}\\
+\textsc{\\[1cm] \large Granada, Mayo de 2022}
+
+\pagebreak
+
+\raggedright
+
+# Descripción del conjunto de datos
+
+El conjunto de datos proporcionado para este trabajo es una versión reducida del **IMDB dataset** que contiene un total de dos mil instancias y cuatro columnas. Las dos más interesantes para cubrir los objetivos de esta práctica son *Text*, que almacena los comentarios producidos por los usuarios, y *Sentiment* que reúne el sentimiento identificado para cada uno. Adicionalmente, como podemos observar en los siguientes resultados, el conjunto de datos se encuentra **balanceado** puesto que dispone del mismo número de muestras para ambas categorías.
+
+```{r}
+# Carga el conjunto de datos desde el fichero CSV
+df <- read.csv("IMDb-sample.csv")
+# Número de filas y columnas
+dim(df)
+# Columnas del dataset
+colnames(df)
+# Número de muestras pertenecientes a cada clase
+summary(df$Sentiment)
+```
+# Preprocesamiento del dataset
+
+Una de las etapas fundamentales en problemas de identificación de sentimientos consiste en utilizar técnicas de tratamiento y limpieza de documentos para considerar únicamente los términos que aporten conocimiento útil a su resolución. 
+
+```{r message=FALSE, warning=FALSE}
+# Carga la librería para trabajar con corpus de textos
+library(tm)
+# Carga la librería con la que preprocesar textos
+library(stringr)
+# Carga la librería que permite aplicar lematización
+library(textstem)
+```
+
+Por lo tanto, en este trabajo se pretenden aplicar los siguientes métodos de preprocesamiento al conjunto de opiniones del dataset:
+
+1. **Generar un corpus**: otra de las estructuras de datos más popularmente utilizadas para el tratamiento de documentos se conoce como *corpus*. Se trata de una metodología de organización de textos que facilita la aplicación de técnicas de preprocesamiento y análisis. Una de las librerías más conocidas en R para este procedimiento es la biblioteca `tm`.
+
+2. **Normalización**: en esta segunda etapa se pretende eliminar todos aquellos caracteres y términos que no sean relevantes para la identificación de sentimientos. Así se reduce el número de recursos computacionales y temporales que se deben invertir en el uso futuro de cualquiera de las técnicas disponibles para la resolución de este problema de clasificación. Por lo tanto procedemos a suprimir **signos de puntuación, caracteres no alfabéticos y stopwords**, además de transformar los caracteres restantes a **minúsculas** evitando los posibles inconvenientes por la diferenciación entre ambos tipos de letras.
+
+3. **Lematización**: finalmente se reemplaza cada término de todos los textos por su raíz de modo que se eliminan palabras plurales, verbos conjugados, entre otros conceptos. Con esta técnica se pretende simplificar el análisis morfológico de un texto con el que identificar el sentimiento que representa.
+
+```{r message=FALSE, warning=FALSE}
+# Convierte la columna de opiniones a un vector fuente para generar un corpus
+text_corpus <- Corpus(VectorSource(df$Text))
+# Elimina signos de puntuación
+clean_text_corpus <- tm_map(text_corpus, removePunctuation)
+# Elimina caracteres no alfanuméricos
+remove_non_alnum <- content_transformer(function(x) gsub("[^[:alnum:] ]", "", x))
+clean_text_corpus <- tm_map(clean_text_corpus, remove_non_alnum)
+# Elimina dígitos
+clean_text_corpus <- tm_map(clean_text_corpus, removeNumbers)
+# Convierte todos los caracteres a minúsculas
+clean_text_corpus <- tm_map(clean_text_corpus, content_transformer(tolower))
+# Elimina stopwords en inglés
+clean_text_corpus <- tm_map(clean_text_corpus, 
+                      content_transformer(removeWords), stopwords("english"))
+# Elimina espacios extra
+clean_text_corpus <- tm_map(clean_text_corpus, stripWhitespace)
+# Lematización
+clean_text_corpus <- tm_map(clean_text_corpus, lemmatize_strings)
+# Muestra las diferencias entre el primer documento original y su versión
+# preprocesada
+substr(text_corpus[[1]]$content, 1, 70)
+substr(clean_text_corpus[[1]]$content, 1, 70)
+```
+
+# Detección de sentimientos 
+
+Se trata de un problema de clasificación que intenta **predecir los sentimientos relativos a un conjunto de textos** en función de la polaridad vinculada a sus términos. Existen diferentes técnicas aplicables para esta temática, aunque principalmente destacan las dos siguientes:
+
+* **Diccionarios**: son estructuras de datos que almacenan un conjunto de **palabras junto con sus sentimientos** asociados. Su uso consiste en sumar las etiquetas de cada uno de los términos de un texto para obtener el sentimiento final del documento. Se caracterizan por una mayor velocidad de aplicación, aunque se encuentran restringidos a la terminología disponible, dejando sin etiqueta a aquellas palabras no contempladas.
+
+* **Algoritmos de Machine Learning**: una de las aproximaciones más adecuadas para resolver problemas de clasificación consiste en construir **modelos a partir de conjuntos de datos etiquetados** con el fin de predecir los sentimientos de textos desconocidos. A diferencia del enfoque anterior, son más costosos computacional y temporalmente aunque más flexibles por su mayor independencia al contenido de los documentos.
+
+```{r message=FALSE, warning=FALSE}
+# Carga la librería que permite el uso de pipelines de trabajo
+library(dplyr)
+```
+
+## MPQA Subjectivity Lexicon
+
+Este primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría anterior de diccionarios. Previo a su uso, en primer lugar cargamos la información contenida en el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, para luego preprocesarlo y convertilo en un *dataframe*. Esta estructura de datos facilita el acceso a los valores de este diccionario como si de una tabla se tratase, tal y como se muestra en los resultados del siguiente *chunk*. 
+
+```{r}
+# Lee el fichero que contiene el diccionario MPQA Subjectivity Lexicon
+# sin cabecera y estableciendo como separador el espacio en blanco
+mpqa_lex <- read.delim("subjclueslen1-HLTEMNLP05.tff", header=FALSE, sep=" ")
+# Lista con los nombres de columnas a asignar al dataset
+mpqa_lex_cols <- c("type", "len", "word", "word_type", "stemmed", "sentiment")
+# Asigna la lista de nombres de columnas al dataset
+colnames(mpqa_lex) <- mpqa_lex_cols
+# Obtiene el valor de cada par (clave, valor) para almacenarlo en un dataset
+for (i in c(1:ncol(mpqa_lex))) {
+  mpqa_lex[mpqa_lex_cols[i]] <- substr(mpqa_lex[, i], 
+                                 unlist(gregexpr('=', mpqa_lex[, i]))+1, 
+                                 nchar(as.character(mpqa_lex[, i])))
+}
+# Muestra las primeras diez filas del dataset resultante
+head(mpqa_lex)
+```
+
+
