@@ -95,24 +95,35 @@ library(dplyr)
 
 ## MPQA Subjectivity Lexicon
 
-Este primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría anterior de diccionarios. Previo a su uso, en primer lugar cargamos la información contenida en el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, para luego preprocesarlo y convertilo en un *dataframe*. Esta estructura de datos facilita el acceso a los valores de este diccionario como si de una tabla se tratase, tal y como se muestra en los resultados del siguiente *chunk*. 
+Este primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría anterior de diccionarios. Previo a su uso, en primer lugar cargamos la información contenida en el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura. A continuación se generan dos listas con el conjunto de palabras contemplado en el diccionario y los sentimientos asociados a cada uno de los términos. 
 
 ```{r}
 # Lee el fichero que contiene el diccionario MPQA Subjectivity Lexicon
 # sin cabecera y estableciendo como separador el espacio en blanco
-mpqa_lex <- read.delim("subjclueslen1-HLTEMNLP05.tff", header=FALSE, sep=" ")
-# Lista con los nombres de columnas a asignar al dataset
-mpqa_lex_cols <- c("type", "len", "word", "word_type", "stemmed", "sentiment")
-# Asigna la lista de nombres de columnas al dataset
-colnames(mpqa_lex) <- mpqa_lex_cols
-# Obtiene el valor de cada par (clave, valor) para almacenarlo en un dataset
-for (i in c(1:ncol(mpqa_lex))) {
-  mpqa_lex[mpqa_lex_cols[i]] <- substr(mpqa_lex[, i], 
-                                 unlist(gregexpr('=', mpqa_lex[, i]))+1, 
-                                 nchar(as.character(mpqa_lex[, i])))
+mpqa_lex <- read.delim("./dicts/subjclueslen1-HLTEMNLP05.tff", header=FALSE, sep=" ")
+# Obtiene los términos almacenados en el diccionario
+mpqa_lex_words <- c(substr(mpqa_lex[, 3], 
+                         unlist(gregexpr('=', mpqa_lex[, 3]))+1, 
+                         nchar(as.character(mpqa_lex[, 3]))))
+# Obtiene los sentimientos relativos al conjunto de términos anterior
+mpqa_lex_sentiments <- c(substr(mpqa_lex[, 6], 
+                         unlist(gregexpr('=', mpqa_lex[, 6]))+1, 
+                         nchar(as.character(mpqa_lex[, 6]))))
+# Vector que almacena las predicciones del sentimiento de cada documento
+preds <- c()
+# Iteramos sobre todos los documentos del corpus
+for (i in c(1:length(clean_text_corpus))) {
+  # Crea un vector de palabras para cada documento
+  words_array <- unlist(strsplit(clean_text_corpus[[i]]$content, " "))
+  # Busca los términos comunes entre cada documento y el diccionario
+  found_words <- intersect(words_array, mpqa_lex_words)
+  # Obtiene los sentimientos de los términos encontrados en el diccionario
+  found_sentiments <- unlist(sapply(c(1:length(found_words)), 
+       function(x) mpqa_lex_sentiments[which(found_words[x] == mpqa_lex_words)]))
+  # Asigna la clase mayoritaria
+  preds <- append(preds, names(which.max(table(found_sentiments))))
 }
-# Muestra las primeras diez filas del dataset resultante
-head(mpqa_lex)
+# Resumen de predicciones
+table(preds)
 ```
-
 
