@@ -45,6 +45,8 @@ library(tm)
 library(stringr)
 # Carga la librería que permite aplicar lematización
 library(textstem)
+# Carga la librería que permite el uso de pipelines de trabajo
+library(dplyr)
 ```
 
 Por lo tanto, en este trabajo se pretenden aplicar los siguientes métodos de preprocesamiento al conjunto de opiniones del dataset:
@@ -89,53 +91,91 @@ Se trata de un problema de clasificación que intenta **predecir los sentimiento
 * **Algoritmos de Machine Learning**: una de las aproximaciones más adecuadas para resolver problemas de clasificación consiste en construir **modelos a partir de conjuntos de datos etiquetados** con el fin de predecir los sentimientos de textos desconocidos. A diferencia del enfoque anterior, son más costosos computacional y temporalmente aunque más flexibles por su mayor independencia al contenido de los documentos.
 
 ```{r message=FALSE, warning=FALSE}
-# Carga la librería que permite el uso de pipelines de trabajo
-library(dplyr)
+# Función general que permite generar las predicciones sobre el conjunto
+# de datos IMDB sample utilizando el corpus de documentos preprocesados
+# y la lista de términos~sentimientos de un diccionario
+predict_from_dict <- function(lex_words, lex_sents) {
+  # Número de palabras totales en todos los documentos
+  n_tot_words <- 0
+  # Número de palabras coincidentes en los documentos y en el diccionario
+  n_found_words <- 0
+  # Vector que almacena las predicciones del sentimiento de cada documento
+  preds <- c()
+  # Iteramos sobre todos los documentos del corpus
+  for (i in c(1:length(clean_text_corpus))) {
+    # Crea un vector de palabras para cada documento
+    words_array <- unlist(strsplit(clean_text_corpus[[i]]$content, " "))
+    n_tot_words <- n_tot_words + length(words_array)
+    # Busca los términos comunes entre cada documento y el diccionario
+    found_words <- intersect(words_array, lex_words)
+    n_found_words <- n_found_words + length(found_words)
+    # Obtiene los sentimientos de los términos encontrados en el diccionario
+    found_sentiments <- unlist(sapply(c(1:length(found_words)), 
+         function(x) lex_sents[which(found_words[x] == lex_words)]))
+    # Obtiene la clase mayoritaria
+    max_class <- names(which.max(table(found_sentiments, exclude='neutral')))
+    # Adapta el sentimiento al rango de valores del dataset
+    preds <- append(preds, ifelse(max_class == 'positive', 'POS', 'NEG'))
+  }
+  # Devuelve una lista con las predicciones sobre los documentos, el número
+  # total de palabras de todos los textos y el número de coincidencias con
+  # el diccionario
+  return(list("preds"=preds, 
+              "n_tot_words"=n_tot_words, 
+              "n_found_words"=n_found_words))
+}
 ```
 
+La implementación de la función `predict_from_dict` consiste en intentar identificar los sentimientos del conjunto de documentos preprocesado a partir de las listas de términos y sentimientos proporcionadas. El principal objetivo consiste en definir un procedimiento común al reconocimiento de sentimientos utilizando diversos diccionarios. Su núcleo reside en transformar las opiniones del dataset en **vectores de palabras** con los que poder realizar operaciones de **intersección** para buscar los términos en la lista de palabras del diccionario y obtener los sentimientos asociados. Finalmente se asigna el **sentimiento más votado** entre las palabras comunes a sendas entidades, ignorando la etiqueta *neutral* puesto que el rango de valores relativos a la columna *Sentiment* exclusivamente consideran los sentimientos positivos o negativos. 
 ## MPQA Subjectivity Lexicon
 
-Este primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** asociados que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. En la segunda etapa se itera sobre las opiniones del dataset transformándolos en **vectores de palabras**, con los que que poder realizar operaciones de **interesección** y encontrar los sentimientos de la terminología almacenada en ambas estructuras. Finalmente se asigna el **sentimiento más votado** entre las palabras comunes a sendas entidades, ignorando la etiqueta *neutral* puesto que el rango de valores relativos a la columna *Sentiment* exclusivamente consideran los sentimientos positivos o negativos. 
+El primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. Si bien el conjunto de textos objetivo ha sufrido un **proceso de lematización**, parece necesario aplicarlo también **sobre el conjunto de palabras del diccionario**. Existen dos principales razones explicativas que apoyan esta teoría:
 
-```{r}
+* Una primera explicación reside en la intersección que se realiza entre ambas entidades para buscar los vocablos comunes y recuperar sus sentimientos. Únicamente coincidirán aquellos términos **exactamente iguales**, por lo que si una palabra se encuentra en formato raíz en un documento mientras que en el diccionario está conjugada o en plural, no será analizada y por lo tanto es información perdida para resolver el problema de clasificación.
+
+* Por otro lado, parece comprensible que el sentimiento asociado a un término sea **independiente de la forma en la que se encuentre expresado**, por lo que si consideramos solamente las raíces de cada uno de los vocablos, podremos reducir el volumen del diccionario además de recursos computacionales y temporales. En los resultados que se visualizan a continuación podemos observar que se conseguido disminuir el número de palabras de 8.226 a 6.906 vocablos.
+
+```{r message=FALSE, warning=FALSE}
 # Lee el fichero que contiene el diccionario MPQA Subjectivity Lexicon
 # sin cabecera y estableciendo como separador el espacio en blanco
 mpqa_lex <- read.delim("./dicts/subjclueslen1-HLTEMNLP05.tff", header=FALSE, sep=" ")
 # Obtiene los términos almacenados en el diccionario
-mpqa_lex_words <- c(substr(mpqa_lex[, 3], 
-                         unlist(gregexpr('=', mpqa_lex[, 3]))+1, 
+mpqa_lex_words <- c(substr(mpqa_lex[, 3],
+                         unlist(gregexpr('=', mpqa_lex[, 3]))+1,
                          nchar(as.character(mpqa_lex[, 3]))))
 # Obtiene los sentimientos relativos al conjunto de términos anterior
-mpqa_lex_sentiments <- c(substr(mpqa_lex[, 6], 
-                         unlist(gregexpr('=', mpqa_lex[, 6]))+1, 
+mpqa_lex_sentiments <- c(substr(mpqa_lex[, 6],
+                         unlist(gregexpr('=', mpqa_lex[, 6]))+1,
                          nchar(as.character(mpqa_lex[, 6]))))
-# Número de palabras totales en todos los documentos
-n_tot_words <- 0
-# Número de palabras coincidentes en los documentos y en el diccionario
-n_found_words <- 0
-# Vector que almacena las predicciones del sentimiento de cada documento
-preds <- c()
-# Iteramos sobre todos los documentos del corpus
-for (i in c(1:length(clean_text_corpus))) {
-  # Crea un vector de palabras para cada documento
-  words_array <- unlist(strsplit(clean_text_corpus[[i]]$content, " "))
-  n_tot_words <- n_tot_words + length(words_array)
-  # Busca los términos comunes entre cada documento y el diccionario
-  found_words <- intersect(words_array, mpqa_lex_words)
-  n_found_words <- n_found_words + length(found_words)
-  # Obtiene los sentimientos de los términos encontrados en el diccionario
-  found_sentiments <- unlist(sapply(c(1:length(found_words)), 
-       function(x) mpqa_lex_sentiments[which(found_words[x] == mpqa_lex_words)]))
-  # Obtiene la clase mayoritaria
-  max_class <- names(which.max(table(found_sentiments, exclude='neutral')))
-  # Adapta el sentimiento al rango de valores del dataset
-  preds <- append(preds, ifelse(max_class == 'positive', 'POS', 'NEG'))
-}
-# Resumen de predicciones
-table(preds)
-# Calcula el porcentaje de palabras encontradas en el diccionario
-n_found_words/n_tot_words
-# Calcula la precisión comparando las predicciones con las etiquetas reales
-sum(preds == df$Sentiment)/length(preds)
+# Genera un corpus con los términos del diccionario
+dict_corpus <- Corpus(VectorSource(mpqa_lex_words))
+# Lematiza todos los términos para tener la misma sintaxis que los documentos
+clean_dict_corpus <- tm_map(dict_corpus, lemmatize_strings)
+# Obtiene la lista de términos lematizados
+mpqa_lex_lem_words <- sapply(c(1:length(clean_dict_corpus)), 
+                             function(x) clean_dict_corpus[[x]]$content)
+# Genera un dataset para almacenar toda la información
+mpqa_df <- data.frame("words"=mpqa_lex_words, 
+                      "sents"=mpqa_lex_sentiments,
+                      "lem_words"=mpqa_lex_lem_words)
+# Elimina filas en base a términos duplicados 
+mpqa_df <- distinct(mpqa_df)
+# Número de términos del diccionario original
+length(mpqa_lex_words)
+# Número de términos del diccionario lematizado
+length(mpqa_df$lem_words)
 ```
-En los resultados visualizados podemos apreciar, en primer lugar, una tabla con el número de ejemplos predichos para cada clase, siendo la **positiva la categoría predominante**. La siguiente cifra muestra el porcentaje de términos encontrados en el diccionario para la totalidad de los documentos, que al tratarse únicamente de un 23.24% podemos determinar que la **mayoría de los conceptos no han sido analizados** por su inexistencia en este recurso. Como consecuencia se ha obtenido un **68.75% de precisión** tras la comparación de las etiquetas reales y las predichas sobre el conjunto de documentos completo. Por un lado estos resultados demuestran el riesgo de utilizar este tipo de estructuras para resolver problemas de detección de sentimientos, puesto que es altamente **complicado que dispongan de todos los términos** disponibles en un idioma. Sin embargo, tras conocer que el porcentaje de conceptos identificados apenas ha superado el 23%, el hecho de haber obtenido un 69% aproximadamente de precisión tampoco parece ser un pésimo resultado.
+Una vez disponemos del diccionario preprocesado, a continuación generamos las predicciones sobre el conjunto total de documentos utilizando la función definida anteriormente, proporcionando la lista de términos lematizados y sus sentimientos asociados. En los resultados visualizados podemos apreciar, en primer lugar, una tabla con el número de ejemplos predichos para cada clase, siendo la **positiva la categoría predominante**. La siguiente cifra muestra el porcentaje de términos encontrados en el diccionario para la totalidad de los documentos, que al tratarse únicamente de un 24.55% podemos determinar que la **mayoría de los conceptos no han sido analizados** por su inexistencia en este recurso. Como consecuencia se ha obtenido un **69.55% de precisión** tras la comparación de las etiquetas reales y las predichas sobre el conjunto de documentos completo. Por un lado estos resultados demuestran el riesgo de utilizar este tipo de estructuras para resolver problemas de detección de sentimientos, puesto que es altamente **complicado que dispongan de todos los términos** disponibles en un idioma. Sin embargo, tras conocer que el porcentaje de conceptos identificados apenas ha superado el 24%, el hecho de haber obtenido un 69% aproximadamente de precisión tampoco parece ser un pésimo resultado.
+
+```{r}
+# Calcula las predicciones de los documentos utilizando las listas de términos
+# y sentimientos del diccionario
+mpqa_results <- predict_from_dict(mpqa_df$lem_words, mpqa_df$sents)
+# Resumen de predicciones
+table(mpqa_results$preds)
+# Calcula el porcentaje de palabras encontradas en el diccionario
+mpqa_results$n_found_words/mpqa_results$n_tot_words
+# Calcula la precisión comparando las predicciones con las etiquetas reales
+sum(mpqa_results$preds == df$Sentiment)/length(mpqa_results$preds)
+```
+
