@@ -11,3 +11,5 @@
    * Detección de comunidades con los algoritmos de Lovaina y Leiden.
 
 2. **Minería de Textos**. En la carpeta *Minería de Textos* se encuentra el conjunto de datos seleccionado para aplicar diversas técnicas de preprocesamiento basadas en texto con el objetivo de emplear métodos de visualización y algoritmos de *clustering* con los que realizar un análisis y descripción de los documentos preprocesados. 
+
+3. **Análisis de Sentimientos**. En la última carpeta *Análisis de Sentimientos* se encuentra el proyecto relativo a la última práctica cuyo objetivo consiste en utilizar diferentes técnicas de reconocimiento de sentimientos basados en textos, siendo principalmente aquellas que emplean diccionarios o generando modelos con algoritmos de Aprendizaje Automático. Los métodos de tratamiento de documentos usados en la práctica de *Minería de Textos* han sido reutilizados en este trabajo para facilitar la resolución de este problema de clasificación, reduciendo la inversión de recursos computacionales y temporales.
