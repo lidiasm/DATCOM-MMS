@@ -82,18 +82,18 @@ substr(text_corpus[[1]]$content, 1, 70)
 substr(clean_text_corpus[[1]]$content, 1, 70)
 ```
 
-# Detección de sentimientos 
+# Detección de sentimientos con diccionarios
 
-Se trata de un problema de clasificación que intenta **predecir los sentimientos relativos a un conjunto de textos** en función de la polaridad vinculada a sus términos. Existen diferentes técnicas aplicables para esta temática, aunque principalmente destacan las dos siguientes:
+Los diccionarios son estructuras de datos que almacenan un conjunto de **palabras junto con sus sentimientos** asociados. Su uso consiste en sumar las etiquetas de cada uno de los términos de un texto para obtener el sentimiento final del documento. Se caracterizan por una mayor velocidad de aplicación, aunque se encuentran restringidos a la terminología disponible, dejando sin etiqueta a aquellas palabras no contempladas.
 
-* **Diccionarios**: son estructuras de datos que almacenan un conjunto de **palabras junto con sus sentimientos** asociados. Su uso consiste en sumar las etiquetas de cada uno de los términos de un texto para obtener el sentimiento final del documento. Se caracterizan por una mayor velocidad de aplicación, aunque se encuentran restringidos a la terminología disponible, dejando sin etiqueta a aquellas palabras no contempladas.
-
-* **Algoritmos de Machine Learning**: una de las aproximaciones más adecuadas para resolver problemas de clasificación consiste en construir **modelos a partir de conjuntos de datos etiquetados** con el fin de predecir los sentimientos de textos desconocidos. A diferencia del enfoque anterior, son más costosos computacional y temporalmente aunque más flexibles por su mayor independencia al contenido de los documentos.
+A continuación presentamos dos funciones propiamente implementadas orientadas a la **predicción de sentimientos basado en un conjunto de textos y al preprocesamiento requerido para el uso de diccionarios** en la resolución de este problema de clasificación. La implementación de la función `predict_from_dict` consiste en intentar identificar los sentimientos del conjunto de documentos preprocesado a partir de las listas de términos y sentimientos proporcionadas. El principal objetivo consiste en definir un procedimiento común al reconocimiento de sentimientos utilizando diversos diccionarios. Su núcleo reside en transformar las opiniones del dataset en **vectores de palabras** con los que poder realizar operaciones de **intersección** para buscar los términos en la lista de palabras del diccionario y obtener los sentimientos asociados. Finalmente se asigna el **sentimiento más votado** entre las palabras comunes a sendas entidades, ignorando la etiqueta *neutral* puesto que el rango de valores relativos a la columna *Sentiment* exclusivamente consideran los sentimientos positivos o negativos.
 
 ```{r message=FALSE, warning=FALSE}
-# Función general que permite generar las predicciones sobre el conjunto
-# de datos IMDB sample utilizando el corpus de documentos preprocesados
-# y la lista de términos~sentimientos de un diccionario
+# Función que permite generar predicciones sobre el conjunto de documentos de
+# IMDB dataset utilizando la lista de términos y sentimientos de un diccionario
+# Parámetros de entrada: dos listas con los términos y sus sentimientos.
+# Devuelve un diccionario con las predicciones, el número de términos totales
+# de los documentos y el número de palabras encontradas en el diccionario
 predict_from_dict <- function(lex_words, lex_sents) {
   # Número de palabras totales en todos los documentos
   n_tot_words <- 0
@@ -126,14 +126,41 @@ predict_from_dict <- function(lex_words, lex_sents) {
 }
 ```
 
-La implementación de la función `predict_from_dict` consiste en intentar identificar los sentimientos del conjunto de documentos preprocesado a partir de las listas de términos y sentimientos proporcionadas. El principal objetivo consiste en definir un procedimiento común al reconocimiento de sentimientos utilizando diversos diccionarios. Su núcleo reside en transformar las opiniones del dataset en **vectores de palabras** con los que poder realizar operaciones de **intersección** para buscar los términos en la lista de palabras del diccionario y obtener los sentimientos asociados. Finalmente se asigna el **sentimiento más votado** entre las palabras comunes a sendas entidades, ignorando la etiqueta *neutral* puesto que el rango de valores relativos a la columna *Sentiment* exclusivamente consideran los sentimientos positivos o negativos. 
-## MPQA Subjectivity Lexicon
-
-El primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. Si bien el conjunto de textos objetivo ha sufrido un **proceso de lematización**, parece necesario aplicarlo también **sobre el conjunto de palabras del diccionario**. Existen dos principales razones explicativas que apoyan esta teoría:
+El cometido de la segunda función denominada `preprocess_dict` consiste en aplicar el mismo **proceso de lematización** que ha sufrido el volumen de comentarios anteriormente. Existen dos principales razones explicativas que apoyan esta teoría:
 
 * Una primera explicación reside en la intersección que se realiza entre ambas entidades para buscar los vocablos comunes y recuperar sus sentimientos. Únicamente coincidirán aquellos términos **exactamente iguales**, por lo que si una palabra se encuentra en formato raíz en un documento mientras que en el diccionario está conjugada o en plural, no será analizada y por lo tanto es información perdida para resolver el problema de clasificación.
 
-* Por otro lado, parece comprensible que el sentimiento asociado a un término sea **independiente de la forma en la que se encuentre expresado**, por lo que si consideramos solamente las raíces de cada uno de los vocablos, podremos reducir el volumen del diccionario además de recursos computacionales y temporales. En los resultados que se visualizan a continuación podemos observar que se conseguido disminuir el número de palabras de 8.226 a 6.906 vocablos.
+* Por otro lado, parece comprensible que el sentimiento asociado a un término sea **independiente de la forma en la que se encuentre expresado**, por lo que si consideramos solamente las raíces de cada uno de los vocablos, podremos reducir el volumen del diccionario además de recursos computacionales y temporales. 
+
+```{r}
+# Función que aplica un proceso de lematización sobre el conjunto de palabras
+# proporcionado para componer un dataset que represente la información 
+# recopilada por un diccionario.
+# Parámetros de entrada: dos listas con los términos y sus sentimientos.
+# Devuelve un dataframe con la lista de términos originales, una segunda con
+# los vocablos lematizados y sus sentimientos asociados.
+preprocess_dict <- function(words, sents) {
+  # Genera un corpus con los términos del diccionario
+  dict_corpus <- Corpus(VectorSource(words))
+  # Lematiza todos los términos del diccionario
+  clean_dict_corpus <- tm_map(dict_corpus, lemmatize_strings)
+  # Obtiene la lista de términos lematizados
+  lem_words <- sapply(c(1:length(clean_dict_corpus)), 
+                               function(x) clean_dict_corpus[[x]]$content)
+  # Genera un dataset para almacenar toda la información
+  dict_df <- data.frame("words"=words, 
+                        "sents"=sents,
+                        "lem_words"=lem_words)
+  # Elimina filas en base a términos duplicados 
+  dict_df <- distinct(dict_df)
+  # Devuelve un dataset con el diccionario preprocesado
+  return(dict_df)
+}
+```
+
+## MPQA Subjectivity Lexicon
+
+El primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. A continuación preprocesamos el diccionario lematizando sus términos para establecer la misma sintaxis que el conjunto de textos a analizar y reducir el volumen de vocablos considerados. En los siguientes resultados representados podemos observar que se conseguido disminuir el número de palabras en más de mil ejemplos.
 
 ```{r message=FALSE, warning=FALSE}
 # Lee el fichero que contiene el diccionario MPQA Subjectivity Lexicon
@@ -147,19 +174,8 @@ mpqa_lex_words <- c(substr(mpqa_lex[, 3],
 mpqa_lex_sentiments <- c(substr(mpqa_lex[, 6],
                          unlist(gregexpr('=', mpqa_lex[, 6]))+1,
                          nchar(as.character(mpqa_lex[, 6]))))
-# Genera un corpus con los términos del diccionario
-dict_corpus <- Corpus(VectorSource(mpqa_lex_words))
-# Lematiza todos los términos para tener la misma sintaxis que los documentos
-clean_dict_corpus <- tm_map(dict_corpus, lemmatize_strings)
-# Obtiene la lista de términos lematizados
-mpqa_lex_lem_words <- sapply(c(1:length(clean_dict_corpus)), 
-                             function(x) clean_dict_corpus[[x]]$content)
-# Genera un dataset para almacenar toda la información
-mpqa_df <- data.frame("words"=mpqa_lex_words, 
-                      "sents"=mpqa_lex_sentiments,
-                      "lem_words"=mpqa_lex_lem_words)
-# Elimina filas en base a términos duplicados 
-mpqa_df <- distinct(mpqa_df)
+# Lematiza los términos del diccionario y lo convierte en un dataset
+mpqa_df <- preprocess_dict(mpqa_lex_words, mpqa_lex_sentiments)
 # Número de términos del diccionario original
 length(mpqa_lex_words)
 # Número de términos del diccionario lematizado
@@ -179,3 +195,166 @@ mpqa_results$n_found_words/mpqa_results$n_tot_words
 sum(mpqa_results$preds == df$Sentiment)/length(mpqa_results$preds)
 ```
 
+## SenticNet 5
+
+El último diccionario propuesto para emplear en este trabajo se denomina *SenticNet 5* y su contenido se localiza dentro de un fichero nombrado como *senticnet5.txt*, también proporcionado en la asignatura. Tras varios experimentos, la función `read.table` obtiene su esquema principal generando un dataset con tres columnas. Existen dos principales diferencias a destacar con respecto a los dos anteriores diccionarios:
+
+- La primera columna dispone de una mayor variabilidad de valores puesto que, además de almacenar términos independientes también es capaz de albergar **expresiones compuestas por varias palabras**, entre las que se encuentran diferentes adverbios que ayudan al reconocimiento de sentimientos en textos.
+
+- A raíz de la característica anterior, la tercera columna representa la **intensidad del sentimiento** asociado a cada expresión con un rango de valores entre 0 y 1, siendo este último el máximo. Esta información adicional permite analizar la intensidad del sentimiento como si se tratase de la fiabilidad asociada a la predicción. Presumiblemente a mayor valor, mejor representado se encuentra el sentimiento identificado en un texto.
+
+```{r warning=FALSE}
+# Carga el diccionario desde el fichero TXT como una tabla para separar 
+# las columnas
+sent5_lex <- read.table("./dicts/senticnet5.txt", header=TRUE)
+head(sent5_lex)
+```
+
+Si bien las dos cualidades destacadas anteriormente podrían proporcionar resultados más precisos al analizar la composición de un conjunto de documentos, requieren un **análisis sintáctico y morfológico notablemente complejo** y personalizado para adaptar la terminología al diccionario. Para obtener beneficios adicionales de esta información, parece necesario **identificar las distintas expresiones existentes en cada uno de los documentos** para luego intentar buscarlas en el diccionario y recuperar sus sentimientos. Este proceso puede ser factible si la longitud de los textos o el volumen del conjunto no es demasiado considerable. Sin embargo este fenómeno no suele ser frecuente en problemas reales, por lo que quizás la estructura de este diccionario puede no ser la más adecuada para aprovechar la información útil que almacena.
+
+Como el conjunto de datos almacenados en este diccionario es considerablemente alto y el número de opiniones del dataset se caracteriza por ser también muy elevado como para analizar todos los documentos e identificar expresiones que permitan posteriormente su búsqueda y reconocimiento de sentimientos, procedemos a **eliminar aquellos términos compuestos por más de una palabra**. Finalmente aplicamos el mismo proceso de **lematización** como se efectuó en los diccionarios anteriores con el fin de establecer la misma sintaxis que los documentos y continuar reduciendo el número de palabras del diccionario. De este modo el conjunto de términos disponibles se ha reducido en más de un 60%, tal y como se puede apreciar en los siguientes resultados.
+
+```{r message=FALSE, warning=FALSE}
+# Elimina los términos compuestos por varias palabras, es decir, cuyos valores
+# contengan guiones bajos
+sent5_lex_words <- sent5_lex %>% filter(str_detect(CONCEPT, "_", negate=TRUE))
+# Lematiza los términos del diccionario y lo convierte en un dataset
+sent5_df <- preprocess_dict(sent5_lex_words$CONCEPT, sent5_lex_words$POLARITY)
+# Número de términos del diccionario original
+length(sent5_lex$CONCEPT)
+# Número de términos del diccionario lematizado
+length(sent5_df$lem_words)
+```
+Tras preprocesar el diccionario SenticNet 5 considerando únicamente los términos individuales y aplicando un proceso de lematización para maximizar la compatibilidad con la sintaxis de los textos a analizar, a continuación utilizamos la función implementada `predict_from_dict`, proporcionando la lista de términos y sentimientos de esta estructura de datos. En las primeras cifras podemos notar una **desmesurada preferencia por la clasificación de instancias positivas**, siendo el número de ejemplos categorizados como negativos perjudicialmente ínfimo con un total de trece documentos. El siguiente valor representa que se han podido **encontrar el 57% de términos en el diccionario** para su valoración, una cifra apreciablemente superior a la clasificación de los apartados anteriores. Sin embargo, **la tasa de aciertos es del 50%** lo cual significa que aproximadamente la mitad de los documentos han sido erróneamente clasificados. A diferencia del *MPQA Subjectivity Lexicon* en este caso hemos podido observar un alto porcentaje de coincidencia entre los vocablos de los documentos y del diccionario, aunque la tasa de aciertos ha sido casi veinte puntos menos. Presumiblemente, este resultado puede mejorar realizando análisis sintácticos y morfológicos de los documentos con los que identificar expresiones que enriquecen la información útil para reconocer los sentimientos representados por cada uno de ellos.
+
+```{r}
+# Calcula las predicciones de los documentos utilizando las listas de términos
+# y sentimientos del diccionario
+sent5_results <- predict_from_dict(sent5_df$lem_words, sent5_df$sents)
+# Resumen de predicciones
+table(sent5_results$preds)
+# Calcula el porcentaje de palabras encontradas en el diccionario
+sent5_results$n_found_words/sent5_results$n_tot_words
+# Calcula la precisión comparando las predicciones con las etiquetas reales
+sum(sent5_results$preds == df$Sentiment)/length(sent5_results$preds)
+```
+
+# Detección de sentimientos con *Machine Learning*
+
+Una de las aproximaciones más adecuadas para resolver problemas de clasificación consiste en construir **modelos a partir de conjuntos de datos etiquetados** con el fin de predecir los sentimientos de textos desconocidos. A diferencia del enfoque anterior, son más costosos computacional y temporalmente aunque más flexibles por su mayor independencia al contenido de los documentos. Con el objetivo de proporcionar como entrada el conjunto de textos disponibles en el IMDB dataset, debemos transformar su estructura a una organización compatible con los algoritmos de Aprendizaje Automático. La **matriz de documentos** es el esquema más popularmente utilizado para esta aplicación y se puede generar utilizando la función `DocumentTermMatrix` implementada dentro de la biblioteca `tm`.
+
+```{r}
+# Carga la librería que permite dividir una matriz de documentos en
+# entrenamiento y test
+library(caTools)
+# Establece una semilla para que los resultados aleatorios sean reproducibles
+set.seed(26)
+# Carga la librería que contiene el algoritmo Naive Bayes
+library(e1071)
+# Carga la librería que contiene el algoritmo Random Forest
+library(randomForest)
+
+# Genera una matriz de documentos a partir del corpus preprocesado
+doc_matrix <- DocumentTermMatrix(clean_text_corpus) 
+# Muestra un resumen del resultado
+inspect(doc_matrix)
+```
+
+Si observamos los resultados obtenidos, destaca el **notable valor de la métrica Sparsity**, que refleja el porcentaje de ceros almacenados en la matriz. La explicación de este fenómeno se fundamenta en la cantidad de términos caracterizados por una **mínima frecuencia** de aparición en los documentos. Como consecuencia, presumiblemente este tipo de conceptos no serán suficientemente relevantes para ser incluidos en este estudio. Por lo tanto, podemos emplear la función `removeSparseTerms` que permite eliminar aquellas palabras cuyo valor de **Sparsity es mayor a un determinado umbral**, de modo que únicamente se consideran los términos con una frecuencia de ocurrencia razonablemente importante. Tras realizar varios experimentos estableciendo diferentes umbrales de Sparsity, conforme más elevado es el valor más restrictivo es el filtrado, lo que conlleva una disminución drástica del número de conceptos. Estableciendo un umbral del 50% podemos apreciar que el conjunto de palabras analizadas por documento se reduce a únicamente **siete términos**, que se pueden visualizar en la matriz resultante. Sin embargo, con este umbral se consigue **suprimir más de la mitad de ceros** produciendo un decremento altamente notable del valor de Sparsity.
+
+```{r}
+# Elimina aquellos términos con un valor de sparsity superior al 50%
+reduced_doc_matrix <- removeSparseTerms(doc_matrix, .5)
+# Muestra un resumen del resultado
+inspect(reduced_doc_matrix)
+```
+
+Una vez disponemos de la matriz de documentos preprocesada que representa a la totalidad de los comentarios disponibles en el dataset mediante siete términos, a continuación procedemos a implementar la función `train_and_test_model` que contiene el procedimiento requerido para construir un clasificador. 
+
+1. En primer lugar se convierte la matriz de documentos a un *dataframe* y se añade una nueva columna denominada *doc_id* a partir de la original *Index*, que contiene los **identificadores numéricos que representan a cada uno de los textos** unívocamente. Esta información facilita la selección de las muestras con las que entrenar y validar un modelo de manera aleatoria junto con sus respectivas etiquetas. 
+
+2. La segunda fase consiste en dividir el conjunto de documentos en dos subconjuntos con el **80% de ejemplos para entrenamiento y el 20% restante para validación**. Para ello hacemos uso de la función `sample.split` ubicada en la librería `caTools`, a la que se proporciona la matriz de documentos transformada y el ratio que especifica el número de ejemplos para cada fase de la generación del modelo. Con el objetivo de que los resultados sean reproducibles, al comienzo de esta sección se establece una semilla fija.
+
+3. Finalmente, dependiendo del argumento proporcionado a la función, se construye un clasificador utilizando **Naive Bayes o Random Forest** empleando el conjunto de entrenamiento y validándolo con el conjunto de test, calculando la tasa de aciertos comparando las predicciones realizadas sobre el conjunto de test con sus etiquetas reales.
+
+```{r}
+set.seed(26)
+# Función que convierte la matriz de documentos en un dataset para 
+# posteriormente dividir el conjunto de datos en entrenamiento y validación
+# con los que construir un modelo utilizando Naive Bayes o Random Forest.
+# Parámetros de entrada: 'NB' para entrenar un modelo con Naive Bayes o 'RF'
+# para emplear Random Forest como algoritmo.
+train_and_test_model <- function(algorithm) {
+  # Convierte la matriz de documentos en un dataset
+  reduced_doc_matrix <- as.data.frame(as.matrix(reduced_doc_matrix))
+  # Añade el identificador de cada documento
+  reduced_doc_matrix['doc_id'] <- df$Index
+  # Genera la división del conjunto de textos reservando el 80% para train
+  train_split <- sample.split(reduced_doc_matrix$doc_id, SplitRatio=0.8)
+  # Obtiene el conjunto de entrenamiento y sus etiquetas excepto la
+  # columna que contiene los identificadores de los documentos
+  train <- subset(reduced_doc_matrix, train_split==TRUE) %>% select(-doc_id)
+  train_labels <- subset(df$Sentiment, train_split==TRUE)
+  # Obtiene el conjunto de validación y sus etiquetas excepto la
+  # columna que contiene los identificadores de los documentos
+  test <- subset(reduced_doc_matrix, train_split==FALSE) %>% select(-doc_id)
+  test_labels <- subset(df$Sentiment, train_split==FALSE)
+  # Muestra las dimensiones de sendos conjuntos
+  print(dim(train))
+  print(length(train_labels))
+  print(dim(test))
+  print(length(test_labels))
+  # Variable que almacena el modelo a entrenar
+  model <- NULL
+  # Entrena un modelo con Naive Bayes
+  if (algorithm == 'NB') {
+    model <- naiveBayes(train, train_labels)
+  }
+  # Entrena un modelo con Random Forest
+  else {
+    model <- randomForest(train, train_labels)
+  }
+  # Genera las predicciones sobre el conjunto de test
+  preds <- predict(model, test)
+  # Muestra el accuracy obtenido
+  print(sum(preds == test_labels)/length(test_labels))
+  # Muestra la matriz de confusión
+  print(table(test_labels, preds))
+}
+```
+
+En la primera ejecución de la función podemos observar que se reservan 1.600 documentos para entrenamiento y 400 para validación, según el ratio propuesto de 80%-20%, considerando como predictores los siete términos de la matriz de documentos. El algoritmo especificado es **Naive Bayes**, seleccionado por su buen equilibrio entre la velocidad de entrenamiento y el óptimo rendimiento que suele proporcionar en la mayoría de problemas de clasificación. Sin embargo, en este caso el modelo obtenido apenas consigue un **50.25% de precisión**, lo que indica que la clasificación de las instancias desconocidas se caracteriza por haber sido prácticamente aleatoria. Observando la matriz de confusión representada al final de los resultados, es considerablemente notable el **altísimo valor de falsos negativos**, por lo que el clasificador parece tener bastantes inconvenientes en reconocer las muestras relativas a la clase negativa.
+
+```{r}
+# Entrenamiento y validación de un modelo con Naive Bayes 
+train_and_test_model('NB')
+```
+La segunda ejecución respeta la misma configuración de entrenamiento y validación comentada anteriormente, tal y como podemos apreciar en los cuatro primeros resultados, aunque en este caso se emplea el algoritmo **Random Forest** por su característica robustez y adaptación a casi cualquier conjunto de datos y problema de clasificación. No obstante, de nuevo la **tasa de aciertos del clasificador es considerablemente baja con un 54%**. A diferencia del modelo anterior, en la **matriz de confusión se aprecia un mayor equilibrio en el número de fallos** durante la clasificación de los ejemplos de test pertenecientes a sendas categorías.
+
+```{r}
+# Entrenamiento y validación de un modelo con Random Forest
+train_and_test_model('RF')
+```
+Reflexionando acerca de los pésimos resultados y tras efectuar diversos experimentos, parece que la explicación más plausible a este fenómeno es la **drástica reducción del número de términos** que representan a cada texto en la matriz de documentos. Disminuyendo el **umbral superior de Sparsity a un 95%** podemos apreciar que el número de ceros almacenados incrementa cuantiosamente a la vez que también incrementa el número de vocablos considerados.
+
+```{r}
+# Elimina aquellos términos con un valor de sparsity superior al 90%
+reduced_doc_matrix <- removeSparseTerms(doc_matrix, .95)
+# Muestra un resumen del resultado
+inspect(reduced_doc_matrix)
+```
+
+Si repetimos el entrenamiento del primer modelo utilizando la misma configuración y algoritmo Naive Bayes, podemos observar en los siguientes resultados que la **precisión incrementa notablemente hasta alcanzar más de un 78.25%**. Con esta tasa de aciertos podemos confirmar que el clasificador obtenido está haciendo uso de los patrones que ha aprendido durante la etapa de entrenamiento para identificar las muestras positivas y negativas. Si bien sigue existiendo un **mayor porcentaje de falsos negativos**, el número de fallos en esta categoría se ha reducido drásticamente gracias la **mayor representación de términos en la matriz de documentos**.
+
+```{r}
+# Entrenamiento y validación de un modelo con Naive Bayes 
+train_and_test_model('NB')
+```
+Una situación similar ocurre al repetir la segunda experimentación empleando el algoritmo Random Forest con la misma configuración de entrenamiento y validación, pero utilizando la nueva matriz de documentos ampliada. Con un mayor número de términos por documento se ha conseguido un modelo con una **capacidad de predicción del 85.75%**, una tasa de aciertos bastante más razonable para considerar que el clasificador es de buena calidad. Como consecuencia la matriz de confusión refleja un **menor número de errores** aunque parece disponer del mismo equilibrio en cuanto al número de fallos cometidos en sendas categorías que fue tan característico del modelo generado con la matriz de documentos compuesta por siete vocablos.
+
+```{r}
+# Entrenamiento y validación de un modelo con Random Forest
+train_and_test_model('RF')
+```
+
+# Comparación de técnicas
