@@ -34,6 +34,7 @@ colnames(df)
 # Número de muestras pertenecientes a cada clase
 summary(df$Sentiment)
 ```
+
 # Preprocesamiento del dataset
 
 Una de las etapas fundamentales en problemas de identificación de sentimientos consiste en utilizar técnicas de tratamiento y limpieza de documentos para considerar únicamente los términos que aporten conocimiento útil a su resolución. 
@@ -160,7 +161,7 @@ preprocess_dict <- function(words, sents) {
 
 ## MPQA Subjectivity Lexicon
 
-El primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. A continuación preprocesamos el diccionario lematizando sus términos para establecer la misma sintaxis que el conjunto de textos a analizar y reducir el volumen de vocablos considerados. En los siguientes resultados representados podemos observar que se conseguido disminuir el número de palabras en más de mil ejemplos.
+El primer procedimiento que se emplea para reconocer las etiquetas asignadas a los comentarios del dataset se encuentra ubicado dentro de la categoría de diccionarios. En el fichero *subjclueslen1-HLTEMNLP05.tff*, proporcionado en los ejemplos de la asignatura, se encuentran las **listas de términos y sentimientos** que contempla este diccionario. Por lo tanto, el primer paso consiste en cargar y almacenar la información de este archivo en dos estructuras de datos respetando el orden de los elementos. Tras visualizar brévemente el contenido del diccionario, he podido comprobar la existencia de **términos compuestos** por varias palabras unidas por guiones. Probablmente se trata de expresiones cuyo objetivo consiste en mejorar la precisión con la que se reconocen los sentimientos en los documentos. Sin embargo, para explotar esta información parece necesario realizar **análisis sintácticos y morfológicos** de todos los textos con los que obtener sus expresiones en el mismo formato. Este proceso no suele ser factible debido al volumen de datos que suele ser característico de los problemas reales y a su desmesurada inversión de recursos requeridos. Por lo tanto, procedemos a **eliminar las expresiones** del diccionario **lematizando los términos** resultantes del filtrado para establecer la misma sintaxis que el conjunto de textos reduciendo hasta mil cuatrocientos vocablos. Adicionalmente, en la última tabla se representa la cantidad de ejemplos de las diferentes clases almacenadas en el diccionario y un aspecto destacable reside en el desequilibrio del conjunto de datos siendo la **clase negativa la categoría mayoritaria**. Una consecuencia directa de este fenómeno es el aumento de la probabilidad de encontrar más términos negativos que positivos, lo que puede afectar en el rendimiento de la clasificación de los textos.
 
 ```{r message=FALSE, warning=FALSE}
 # Lee el fichero que contiene el diccionario MPQA Subjectivity Lexicon
@@ -174,13 +175,21 @@ mpqa_lex_words <- c(substr(mpqa_lex[, 3],
 mpqa_lex_sentiments <- c(substr(mpqa_lex[, 6],
                          unlist(gregexpr('=', mpqa_lex[, 6]))+1,
                          nchar(as.character(mpqa_lex[, 6]))))
+# Genera un dataset con la lista de términos y sentimientos
+mpqa_df <- data.frame("words"=mpqa_lex_words, 
+                        "sents"=mpqa_lex_sentiments)
+# Elimina los términos compuestos por varias palabras unidas por guiones
+mpqa_df <- mpqa_df %>% filter(str_detect(words, "-", negate=TRUE))
 # Lematiza los términos del diccionario y lo convierte en un dataset
-mpqa_df <- preprocess_dict(mpqa_lex_words, mpqa_lex_sentiments)
+mpqa_df <- preprocess_dict(mpqa_df$words, mpqa_df$sents)
 # Número de términos del diccionario original
 length(mpqa_lex_words)
 # Número de términos del diccionario lematizado
 length(mpqa_df$lem_words)
+# Proporción de términos de las distintas categorías
+summary(mpqa_df$sents)
 ```
+
 Una vez disponemos del diccionario preprocesado, a continuación generamos las predicciones sobre el conjunto total de documentos utilizando la función definida anteriormente, proporcionando la lista de términos lematizados y sus sentimientos asociados. En los resultados visualizados podemos apreciar, en primer lugar, una tabla con el número de ejemplos predichos para cada clase, siendo la **positiva la categoría predominante**. La siguiente cifra muestra el porcentaje de términos encontrados en el diccionario para la totalidad de los documentos, que al tratarse únicamente de un 24.55% podemos determinar que la **mayoría de los conceptos no han sido analizados** por su inexistencia en este recurso. Como consecuencia se ha obtenido un **69.55% de precisión** tras la comparación de las etiquetas reales y las predichas sobre el conjunto de documentos completo. Por un lado estos resultados demuestran el riesgo de utilizar este tipo de estructuras para resolver problemas de detección de sentimientos, puesto que es altamente **complicado que dispongan de todos los términos** disponibles en un idioma. Sin embargo, tras conocer que el porcentaje de conceptos identificados apenas ha superado el 24%, el hecho de haber obtenido un 69% aproximadamente de precisión tampoco parece ser un pésimo resultado.
 
 ```{r}
@@ -195,9 +204,64 @@ mpqa_results$n_found_words/mpqa_results$n_tot_words
 sum(mpqa_results$preds == df$Sentiment)/length(mpqa_results$preds)
 ```
 
-## SenticNet 5
+## SentiWordNet 3.0
 
-El último diccionario propuesto para emplear en este trabajo se denomina *SenticNet 5* y su contenido se localiza dentro de un fichero nombrado como *senticnet5.txt*, también proporcionado en la asignatura. Tras varios experimentos, la función `read.table` obtiene su esquema principal generando un dataset con tres columnas. Existen dos principales diferencias a destacar con respecto a los dos anteriores diccionarios:
+```{r message=FALSE, warning=FALSE}
+# Lee el fichero del diccionario SentiWordNet 3.0 línea por línea
+sent3_lex <- readLines('./dicts/SentiWordNet_3.0.0_20130122.txt')
+# Preprocesamiento del diccionario para obtener los términos y sentimientos
+prep_sent3_lex <- sapply(c(28:length(sent3_lex)), function(x) {
+  # Separa cada columna por el caracter tabulador
+  splitted_line <- unlist(strsplit(sent3_lex[x], "\t"))
+  # Obtiene el sentimiento de los términos de cada línea
+  # Si es mayor el score positivo, el sentimiento es positivo, si no es negativo
+  sent <- ifelse(as.double(splitted_line[3]) > 
+                   as.double(splitted_line[4]), 'positive', 'negative')
+  # Separa la lista de términos de cada línea por el caracter espacio
+  term_list <- unlist(strsplit(splitted_line[5], " "))
+  # Vector que almacena los términos y sentimientos del diccionario
+  sent3_data <- c()
+  # Cada concepto preprocesado con su término
+  sapply(c(1:length(term_list)), function(x) {
+    sent3_data <- append(sent3_data, list(substr(term_list[x], 1, 
+                        unlist(gregexpr('#', term_list[x]))-1), sent))
+  })
+})
+# Genera un dataset con la lista de términos y sentimientos
+sent3_df <- data.frame("words"=
+                         unlist(sapply(c(1:length(prep_sent3_lex)), 
+                                       function(x) prep_sent3_lex[[x]][1])), 
+                        "sents"=
+                         unlist(sapply(c(1:length(prep_sent3_lex)),
+                                       function(x) prep_sent3_lex[[x]][2])))
+# Elimina los términos compuestos por varias palabras unidas por guiones
+sent3_df <- sent3_df %>% 
+            filter(str_detect(words, "_", negate=TRUE)) %>% 
+            filter(str_detect(words, "-", negate=TRUE))
+# Lematiza los términos del diccionario y lo convierte en un dataset
+sent3_df <- preprocess_dict(sent3_df$words, sent3_df$sents)
+# Número de términos del diccionario original
+length(prep_sent3_lex)
+# Número de términos del diccionario lematizado
+length(sent3_df$lem_words)
+# Proporción de términos de las distintas categorías
+summary(sent3_df$sents)
+```
+```{r}
+# Calcula las predicciones de los documentos utilizando las listas de términos
+# y sentimientos del diccionario
+sent3_results <- predict_from_dict(sent3_df$lem_words, sent3_df$sents)
+# Resumen de predicciones
+table(sent3_results$preds)
+# Calcula el porcentaje de palabras encontradas en el diccionario
+sent3_results$n_found_words/sent3_results$n_tot_words
+# Calcula la precisión comparando las predicciones con las etiquetas reales
+sum(sent3_results$preds == df$Sentiment)/length(sent3_results$preds)
+```
+
+## SenticNet 5.0
+
+El último diccionario propuesto para emplear en este trabajo se denomina *SenticNet 5.0* y su contenido se localiza dentro de un fichero nombrado como *senticnet5.txt*, también proporcionado en la asignatura. Tras varios experimentos, la función `read.table` obtiene su esquema principal generando un dataset con tres columnas. Existen dos principales diferencias a destacar con respecto a los dos anteriores diccionarios:
 
 - La primera columna dispone de una mayor variabilidad de valores puesto que, además de almacenar términos independientes también es capaz de albergar **expresiones compuestas por varias palabras**, entre las que se encuentran diferentes adverbios que ayudan al reconocimiento de sentimientos en textos.
 
@@ -210,9 +274,9 @@ sent5_lex <- read.table("./dicts/senticnet5.txt", header=TRUE)
 head(sent5_lex)
 ```
 
-Si bien las dos cualidades destacadas anteriormente podrían proporcionar resultados más precisos al analizar la composición de un conjunto de documentos, requieren un **análisis sintáctico y morfológico notablemente complejo** y personalizado para adaptar la terminología al diccionario. Para obtener beneficios adicionales de esta información, parece necesario **identificar las distintas expresiones existentes en cada uno de los documentos** para luego intentar buscarlas en el diccionario y recuperar sus sentimientos. Este proceso puede ser factible si la longitud de los textos o el volumen del conjunto no es demasiado considerable. Sin embargo este fenómeno no suele ser frecuente en problemas reales, por lo que quizás la estructura de este diccionario puede no ser la más adecuada para aprovechar la información útil que almacena.
+Si bien las dos cualidades destacadas anteriormente podrían proporcionar resultados más precisos al analizar la composición de un conjunto de documentos, requieren un **análisis sintáctico y morfológico notablemente complejo** y personalizado para adaptar la terminología al diccionario. Como en la aplicación de los diccionarios previos, parece fundamental generar análisis sintácticos y morfológicos de todos los textos para identificar sus expresiones e intentar obtener sus sentimientos. Por la alta inversión de recursos temporales que implica este procedimiento, de nuevo eliminamos las expresiones del diccionario para considerar únicamente aquellos términos que son útiles con respecto al corpus preprocesado.
 
-Como el conjunto de datos almacenados en este diccionario es considerablemente alto y el número de opiniones del dataset se caracteriza por ser también muy elevado como para analizar todos los documentos e identificar expresiones que permitan posteriormente su búsqueda y reconocimiento de sentimientos, procedemos a **eliminar aquellos términos compuestos por más de una palabra**. Finalmente aplicamos el mismo proceso de **lematización** como se efectuó en los diccionarios anteriores con el fin de establecer la misma sintaxis que los documentos y continuar reduciendo el número de palabras del diccionario. De este modo el conjunto de términos disponibles se ha reducido en más de un 60%, tal y como se puede apreciar en los siguientes resultados.
+Como el conjunto de datos almacenados en este diccionario es considerablemente alto y el número de opiniones del dataset se caracteriza por ser también muy elevado como para analizar todos los documentos e identificar expresiones que permitan posteriormente su búsqueda y reconocimiento de sentimientos, procedemos a **eliminar aquellos términos compuestos por más de una palabra**. Finalmente aplicamos el mismo proceso de **lematización** como se efectuó en los diccionarios anteriores con el fin de establecer la misma sintaxis que los documentos y continuar reduciendo el número de palabras del diccionario. De este modo el conjunto de términos disponibles se ha reducido en más de un 60%, tal y como se puede apreciar en los siguientes resultados. Finalmente, una de las diferencias más notables con respecto a los dos diccionarios previos es su **equilibrio entre el número de conceptos positivos y negativos** almacenados en esta estructura de datos.
 
 ```{r message=FALSE, warning=FALSE}
 # Elimina los términos compuestos por varias palabras, es decir, cuyos valores
@@ -224,8 +288,11 @@ sent5_df <- preprocess_dict(sent5_lex_words$CONCEPT, sent5_lex_words$POLARITY)
 length(sent5_lex$CONCEPT)
 # Número de términos del diccionario lematizado
 length(sent5_df$lem_words)
+# Proporción de términos de las distintas categorías
+summary(sent5_df$sents)
 ```
-Tras preprocesar el diccionario SenticNet 5 considerando únicamente los términos individuales y aplicando un proceso de lematización para maximizar la compatibilidad con la sintaxis de los textos a analizar, a continuación utilizamos la función implementada `predict_from_dict`, proporcionando la lista de términos y sentimientos de esta estructura de datos. En las primeras cifras podemos notar una **desmesurada preferencia por la clasificación de instancias positivas**, siendo el número de ejemplos categorizados como negativos perjudicialmente ínfimo con un total de trece documentos. El siguiente valor representa que se han podido **encontrar el 57% de términos en el diccionario** para su valoración, una cifra apreciablemente superior a la clasificación de los apartados anteriores. Sin embargo, **la tasa de aciertos es del 50%** lo cual significa que aproximadamente la mitad de los documentos han sido erróneamente clasificados. A diferencia del *MPQA Subjectivity Lexicon* en este caso hemos podido observar un alto porcentaje de coincidencia entre los vocablos de los documentos y del diccionario, aunque la tasa de aciertos ha sido casi veinte puntos menos. Presumiblemente, este resultado puede mejorar realizando análisis sintácticos y morfológicos de los documentos con los que identificar expresiones que enriquecen la información útil para reconocer los sentimientos representados por cada uno de ellos.
+
+Tras preprocesar el diccionario SenticNet 5.0 considerando únicamente los términos individuales y aplicando un proceso de lematización para maximizar la compatibilidad con la sintaxis de los textos a analizar, a continuación utilizamos la función implementada `predict_from_dict`, proporcionando la lista de términos y sentimientos de esta estructura de datos. En las primeras cifras podemos notar una **desmesurada preferencia por la clasificación de instancias positivas**, siendo el número de ejemplos categorizados como negativos perjudicialmente ínfimo con un total de trece documentos. El siguiente valor representa que se han podido **encontrar el 57% de términos en el diccionario** para su valoración, una cifra apreciablemente superior a la clasificación de los apartados anteriores. Sin embargo, **la tasa de aciertos es del 50%** lo cual significa que aproximadamente la mitad de los documentos han sido erróneamente clasificados. A diferencia del *MPQA Subjectivity Lexicon* en este caso hemos podido observar un alto porcentaje de coincidencia entre los vocablos de los documentos y del diccionario, aunque la tasa de aciertos ha sido casi veinte puntos menos. Presumiblemente, este resultado puede mejorar realizando análisis sintácticos y morfológicos de los documentos con los que identificar expresiones que enriquecen la información útil para reconocer los sentimientos representados por cada uno de ellos.
 
 ```{r}
 # Calcula las predicciones de los documentos utilizando las listas de términos
@@ -278,7 +345,6 @@ Una vez disponemos de la matriz de documentos preprocesada que representa a la t
 3. Finalmente, dependiendo del argumento proporcionado a la función, se construye un clasificador utilizando **Naive Bayes o Random Forest** empleando el conjunto de entrenamiento y validándolo con el conjunto de test, calculando la tasa de aciertos comparando las predicciones realizadas sobre el conjunto de test con sus etiquetas reales.
 
 ```{r}
-set.seed(26)
 # Función que convierte la matriz de documentos en un dataset para 
 # posteriormente dividir el conjunto de datos en entrenamiento y validación
 # con los que construir un modelo utilizando Naive Bayes o Random Forest.
@@ -329,12 +395,14 @@ En la primera ejecución de la función podemos observar que se reservan 1.600 d
 # Entrenamiento y validación de un modelo con Naive Bayes 
 train_and_test_model('NB')
 ```
+
 La segunda ejecución respeta la misma configuración de entrenamiento y validación comentada anteriormente, tal y como podemos apreciar en los cuatro primeros resultados, aunque en este caso se emplea el algoritmo **Random Forest** por su característica robustez y adaptación a casi cualquier conjunto de datos y problema de clasificación. No obstante, de nuevo la **tasa de aciertos del clasificador es considerablemente baja con un 54%**. A diferencia del modelo anterior, en la **matriz de confusión se aprecia un mayor equilibrio en el número de fallos** durante la clasificación de los ejemplos de test pertenecientes a sendas categorías.
 
 ```{r}
 # Entrenamiento y validación de un modelo con Random Forest
 train_and_test_model('RF')
 ```
+
 Reflexionando acerca de los pésimos resultados y tras efectuar diversos experimentos, parece que la explicación más plausible a este fenómeno es la **drástica reducción del número de términos** que representan a cada texto en la matriz de documentos. Disminuyendo el **umbral superior de Sparsity a un 95%** podemos apreciar que el número de ceros almacenados incrementa cuantiosamente a la vez que también incrementa el número de vocablos considerados.
 
 ```{r}
@@ -350,6 +418,7 @@ Si repetimos el entrenamiento del primer modelo utilizando la misma configuraci�
 # Entrenamiento y validación de un modelo con Naive Bayes 
 train_and_test_model('NB')
 ```
+
 Una situación similar ocurre al repetir la segunda experimentación empleando el algoritmo Random Forest con la misma configuración de entrenamiento y validación, pero utilizando la nueva matriz de documentos ampliada. Con un mayor número de términos por documento se ha conseguido un modelo con una **capacidad de predicción del 85.75%**, una tasa de aciertos bastante más razonable para considerar que el clasificador es de buena calidad. Como consecuencia la matriz de confusión refleja un **menor número de errores** aunque parece disponer del mismo equilibrio en cuanto al número de fallos cometidos en sendas categorías que fue tan característico del modelo generado con la matriz de documentos compuesta por siete vocablos.
 
 ```{r}
